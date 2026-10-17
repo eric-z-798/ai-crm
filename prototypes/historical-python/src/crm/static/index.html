@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>医院拜访承诺闭环 · 药企 CRM 原型</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<div class="prototype-banner">假设验证原型 · 全部为虚构数据 · 模拟 AI，未连接真实模型 · 请勿录入真实客户或敏感信息</div>
+<div class="shell">
+<aside class="sidebar">
+<div class="brand"><span class="brand-mark">循</span><div>药企客户协作<small>PHARMA · PROTOTYPE 0.1</small></div></div>
+<p class="nav-label">围绕结果推进工作</p>
+<nav aria-label="主导航">
+<button data-view="mission" class="nav active">◈ 目标工作台</button>
+<button data-view="visits" class="nav">▤ 客户与拜访</button>
+<button data-view="tasks" class="nav">☑ 内部跟进任务</button>
+<button data-view="chat" class="nav">◎ 对话入口 · 模拟</button>
+<button data-view="audit" class="nav">≡ 操作与审计</button>
+</nav>
+<div class="sidebar-bottom"><span class="online-dot"></span> 本地规则模拟 · 外部调用 0<p>同一业务服务<br>传统操作 / 对话 / 事件触发</p><small>仅 commercial 内部协作<br>未实现 medical / access 用途隔离</small></div>
+</aside>
+<main>
+<header class="topbar"><div><span id="tenant-name" class="eyebrow">演示制药企业</span><h1 id="page-title">目标工作台</h1></div><label class="identity-label">演示身份（非真实认证）<select id="identity" aria-label="演示身份"></select></label></header>
+<div id="notice" role="status" class="notice" hidden></div>
+<section class="workspace-bar"><label>当前机构<select id="hco" aria-label="当前机构"></select></label><label>推进目标<select id="mission" aria-label="推进目标"></select></label><button id="refresh" class="button subtle">刷新状态</button><button id="new-mission" class="button secondary write-action">＋ 新目标</button></section>
+<section id="mission-view" class="view">
+<div class="intro"><div><p class="eyebrow">从一次拜访，到有证据的下一步</p><h2 id="mission-title">落实医院拜访后的内部承诺</h2><p id="criteria" class="muted"></p></div><span id="mission-status" class="badge"></span></div>
+<div class="metric-grid"><div class="metric"><span>需要你判断</span><strong id="pending-count">0</strong><small>待确认提案</small></div><div class="metric"><span>正在落实</span><strong id="open-count">0</strong><small>开放内部任务</small></div><div class="metric"><span>已记录内部结果</span><strong id="done-count">0</strong><small>有完成说明</small></div><div class="metric unknown"><span>外部客户结果</span><strong>待核验</strong><small>不因任务完成而认定</small></div></div>
+<div class="mission-meta"><span id="budget"></span><div><button id="pause" class="text-button write-action">暂停目标</button><button id="cancel-mission" class="text-button danger write-action">结束目标</button></div></div>
+<div class="columns"><section class="panel"><div class="panel-title"><div><p class="eyebrow">01 · 事实与来源</p><h3>我们知道什么</h3></div><button id="record-visit" class="button secondary write-action">＋ 记拜访</button></div><div id="evidence-list"></div><div class="panel-foot"><button id="analyze" class="button primary write-action">检查最近拜访的明确承诺</button><small>规则模拟只读取已填写的后续事项，不理解自由文本。</small></div></section><section class="panel"><div class="panel-title"><div><p class="eyebrow">02 · 需要判断的下一步</p><h3>审阅后，再执行</h3></div><span class="badge quiet">本轮确认模式</span></div><div id="proposal-list"></div></section></div>
+<section class="panel outcome-panel"><div class="panel-title"><div><p class="eyebrow">03 · 执行与实际结果</p><h3>做了什么，还缺什么</h3></div><button data-view="tasks" class="text-button">查看任务 →</button></div><div id="outcome-list"></div><div class="callout">仍需人工核验：医院是否确认后续沟通、外部协作结果是否发生。本原型不自动发送信息，也不宣告客户目标达成。</div></section>
+<div class="hypothesis"><strong>正在验证的业务假设</strong><p>把“翻拜访记录 → 复制承诺 → 建待办 → 回看结果”放在一个工作台，减少遗漏与切换。节省多少时间尚未经过一线用户测试。</p><p id="manager-note"></p></div>
+</section>
+<section id="visits-view" class="view" hidden><div class="section-heading"><h2>客户与拜访证据</h2><button id="record-visit-2" class="button primary write-action">＋ 记录拜访</button></div><p class="muted">这里只保存虚构机构业务记录。HCP、科室、受监管材料审批尚未实现。</p><div id="visit-list" class="cards"></div></section>
+<section id="tasks-view" class="view" hidden><div class="section-heading"><h2>有负责人、有期限的内部任务</h2><button id="new-task" class="button primary write-action">＋ 传统表单创建</button></div><p class="muted">日期均为 Asia/Shanghai 日历日期，不表示已经与医院约定具体时间。</p><div id="task-list" class="cards"></div></section>
+<section id="chat-view" class="view" hidden><section class="panel chat-panel"><span class="badge">stub-v1 · 规则模拟</span><h2>从对话进入同一个工作台</h2><p class="muted">当前不具备自然语言理解。输入只作为请求说明，模拟器会读取当前目标最近拜访中明确填写的后续事项。产生的是提案，不会直接创建任务。</p><div id="chat-log" class="chat-log" aria-live="polite"></div><form id="chat-form"><label>请求说明<textarea id="chat-input" maxlength="1000" required placeholder="检查这次拜访还有什么明确承诺没落实"></textarea></label><button class="button primary write-action" type="submit">生成模拟提案</button></form></section></section>
+<section id="audit-view" class="view" hidden><div class="section-heading"><h2>可追溯的操作记录</h2><span class="badge quiet">当前权限范围</span></div><p class="muted">写入、确认、拒绝与失败有记录。应用层只追加，不是防篡改认证或生产级审计系统。</p><div id="audit-list" class="audit-list"></div></section>
+<footer>Python + SQLite 可运行原型 · 数据重启保留 · 无生产认证 / PostgreSQL RLS / 持久 worker / 真实模型 / 自动授权策略 / 对外通知</footer>
+</main></div>
+<dialog id="form-dialog"><div class="dialog-head"><h2 id="dialog-title"></h2><button id="close-dialog" class="icon-button" aria-label="关闭">×</button></div><form id="detail-form"><div id="form-fields"></div><p class="form-warning">仅输入合成数据。不要填写患者、医疗敏感、凭据、真实客户或雇主资料。</p><div class="dialog-actions"><button id="cancel-dialog" class="button secondary" type="button">取消</button><button id="submit-dialog" class="button primary" type="submit">保存</button></div></form></dialog>
+</body></html>

@@ -1,0 +1,32 @@
+/** UI-only localization. No record translation, model calls or jurisdiction selection. */
+export const SUPPORTED_LOCALES=['zh-CN','en'];
+export const TENANT_DEFAULT_LOCALE='zh-CN';
+export const UI_TIME_ZONE='Asia/Shanghai';
+export const LOCALE_STORAGE_KEY='pharma-role-prototype-locale-v1';
+export const CATALOG_VERSION='ui-i18n-pilot-1';
+const catalogs=/*__CATALOGS__*/{};
+export const TERM_CATALOG=/*__TERMS__*/{};
+let currentLocale=TENANT_DEFAULT_LOCALE;
+const bindings=new Map();
+export const missingTranslationKeys=new Set();
+export function getLocale(){return currentLocale;}
+export function translate(id,params={},locale=currentLocale){const source=catalogs[locale]||catalogs[TENANT_DEFAULT_LOCALE]||{},base=catalogs[TENANT_DEFAULT_LOCALE]||{};let value=source[id];if(value===undefined){missingTranslationKeys.add(id);value=base[id]===undefined?'[Missing UI text: '+id+']':(locale==='en'?'[Chinese fallback] ':'[中文回退] ')+base[id];}return String(value).replace(/\{(\w+)\}/g,(_,key)=>Object.hasOwn(params,key)?String(params[key]):'{'+key+'}');}
+export function m(id,params={}){return{messageId:id,params,toString(){return translate(id,params);},[Symbol.toPrimitive](){return translate(id,params);}};}
+export function concept(id){return{conceptId:id,toString(){const item=TERM_CATALOG.terms?.find(x=>x.conceptId===id);return item?.preferredLabels?.[currentLocale]||item?.preferredLabels?.['zh-CN']||'[Missing concept: '+id+']';},[Symbol.toPrimitive](){return this.toString();}};}
+export function bindText(element,value){const render=()=>{let result=value;for(let depth=0;typeof result==='function'&&depth<8;depth++)result=result();element.textContent=result==null?'':String(result);if(element.className?.split(' ').includes('fact'))element.setAttribute('lang',/[\u3400-\u9fff]/.test(element.textContent)?'zh-CN':'en');};const group=bindings.get(element)||{};group.text=render;bindings.set(element,group);render();return element;}
+export function bindAttribute(element,name,value){const render=()=>{let result=value;for(let depth=0;typeof result==='function'&&depth<8;depth++)result=result();element.setAttribute(name,String(result??''));};const group=bindings.get(element)||{};group['attr:'+name]=render;bindings.set(element,group);render();}
+export function markOriginal(element,value){element.setAttribute('lang',/[\u3400-\u9fff]/.test(String(value))?'zh-CN':'en');element.setAttribute('data-original-content','true');}
+export function refreshI18n(document){for(const [element,renderers]of bindings){if(element.isConnected===false){bindings.delete(element);continue;}Object.values(renderers).forEach(render=>render());}for(const el of document.querySelectorAll('[data-i18n]'))el.textContent=translate(el.getAttribute('data-i18n'));for(const attribute of ['aria-label','placeholder'])for(const el of document.querySelectorAll('[data-i18n-'+attribute+']'))el.setAttribute(attribute,translate(el.getAttribute('data-i18n-'+attribute)));document.documentElement?.setAttribute('lang',currentLocale);for(const toggle of document.querySelectorAll('[data-locale-toggle]')){toggle.textContent=currentLocale==='zh-CN'?'English':'中文';toggle.setAttribute('aria-label',translate('locale.label')+': '+toggle.textContent);}const select=document.getElementById('ui-locale');if(select)select.value=currentLocale;}
+export function loadLocalePreference(storage){try{const raw=storage?.getItem(LOCALE_STORAGE_KEY);if(!raw)return{locale:TENANT_DEFAULT_LOCALE,source:'TENANT_DEFAULT',warning:null};const data=JSON.parse(raw);if(data?.version!==1||!SUPPORTED_LOCALES.includes(data.locale))return{locale:TENANT_DEFAULT_LOCALE,source:'FALLBACK',warning:'locale.fallback'};return{locale:data.locale,source:'PERSONAL_PREFERENCE',warning:null};}catch{return{locale:TENANT_DEFAULT_LOCALE,source:'FALLBACK',warning:'locale.fallback'};}}
+export function setLocale(locale,{storage=null,persist=false,document=null}={}){const supported=SUPPORTED_LOCALES.includes(locale);currentLocale=supported?locale:TENANT_DEFAULT_LOCALE;let warning=supported?null:'locale.fallback',saved=false;if(persist){try{if(!storage)throw Error('unavailable');storage.setItem(LOCALE_STORAGE_KEY,JSON.stringify({version:1,locale:currentLocale}));saved=true;}catch{warning='locale.preference_failed';}}if(document)refreshI18n(document);return{locale:currentLocale,saved,warning};}
+export function formatDateOnly(value,locale=currentLocale){if(value==null||value==='')return translate('date.unknown',{},locale);if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return String(value);const d=new Date(value+'T00:00:00Z');if(Number.isNaN(d.valueOf())||d.toISOString().slice(0,10)!==value)return String(value);return new Intl.DateTimeFormat(locale,{year:'numeric',month:'short',day:'numeric',timeZone:'UTC'}).format(d);}
+export function formatInstant(value,locale=currentLocale){if(!value)return translate('date.unknown',{},locale);const d=new Date(value);if(Number.isNaN(d.valueOf()))return String(value);return new Intl.DateTimeFormat(locale,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23',timeZone:UI_TIME_ZONE}).format(d)+' · '+UI_TIME_ZONE;}
+export function formatNumber(value,locale=currentLocale){return value==null?translate('date.unknown',{},locale):typeof value==='number'&&Number.isFinite(value)?new Intl.NumberFormat(locale).format(value):String(value);}
+export function errorMessage(error){const key='error.'+(error?.code||'STORAGE_FAILED');return m(catalogs[TENANT_DEFAULT_LOCALE]?.[key]!==undefined?key:'error.STORAGE_FAILED');}
+export function routeLabel(route){return m({OWNER:'route.owner',UNRESOLVED:'route.unknown',SELF_SERVE:'route.sufficient',PROFESSIONAL:'route.professional',CONTENT_REVIEW:'route.new_use'}[route.kind],{name:'林悦'});}
+export function routeBoundary(route){return m({OWNER:'route.owner_boundary',UNRESOLVED:'route.unknown_boundary',SELF_SERVE:'route.sufficient_boundary',PROFESSIONAL:'route.professional_boundary',CONTENT_REVIEW:'route.new_use_boundary'}[route.kind]);}
+export function ownerDisplay(mapping){return mapping?.ownerId==='owner-lin-yue'?m('route.owner',{name:'林悦'}):m('route.unknown');}
+export function routeReason(route){const status=route.mapping?.status;return m('route.reason.'+(['CONFLICT','INACTIVE','UNASSIGNED'].includes(status)?status:'SCOPE'));}
+
+/** Business display uses the page-level Beijing timezone label; source formatting stays explicit. */
+export function formatBusinessInstant(value,locale=currentLocale){return formatInstant(value,locale).replace(' · '+UI_TIME_ZONE,'');}

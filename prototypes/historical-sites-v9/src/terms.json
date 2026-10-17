@@ -1,0 +1,290 @@
+{
+  "version": "0.1",
+  "checkedAt": "2026-10-12",
+  "humanExpertReviewed": false,
+  "terms": [
+    {
+      "conceptId": "role.medical_representative",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "医药代表",
+        "en": "Medical representative"
+      },
+      "definitions": {
+        "zh-CN": "中国参考：经持有人聘用或授权，向医疗卫生机构及其人员传递、沟通和反馈药品信息，从事药品学术推广的人员。英文为本试点对应名，不是官方双语法定职称。",
+        "en": "China-scoped role engaged or authorised by a marketing authorisation holder for drug-related academic promotion and information exchange with healthcare institutions and staff."
+      },
+      "context": "H代表角色；职责依据和实际活动比岗位名称重要。",
+      "sourceIds": [
+        "CN_MR_2026"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "function.medical_information",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "医学信息",
+        "en": "Medical Information"
+      },
+      "definitions": {
+        "zh-CN": "处理产品相关医学信息需求及获准医学内容的职能；企业可使用医学信息中心等名称。",
+        "en": "Function handling product-related medical information needs and controlled medical content."
+      },
+      "context": "用于MI专业受理/内容归属，不泛指任何医学相关信息。",
+      "sourceIds": [
+        "VEEVA_MEDCOMMS",
+        "VEEVA_MEDINQUIRY"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "role.medical_science_liaison",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "医学联络官",
+        "en": "Medical Science Liaison"
+      },
+      "definitions": {
+        "zh-CN": "企业医学团队中的科学交流/专业支持岗位；具体产品、地域、任务和资格由真实职责及当地规则确定。",
+        "en": "Medical-affairs role supporting scientific exchange and medical/scientific expertise within an assigned scope."
+      },
+      "context": "岗位实例不代表所有企业同一职责，不能因改职称绕开适用行为规则。",
+      "sourceIds": [
+        "NOVARTIS_MSL",
+        "CN_MR_2026"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "role.line_manager",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "直属经理",
+        "en": "Line manager"
+      },
+      "definitions": {
+        "zh-CN": "当前H中的资源、优先级及未知负责人协调角色；管理权限不自动附带医学答复或资料审批权。",
+        "en": "In story H, the manager coordinates ownership, resources and priorities; any medical or content-approval authority must be separately established."
+      },
+      "context": "H合成职责提案，非全行业组织定义。",
+      "sourceIds": [
+        "CN_MR_2026",
+        "VEEVA_PROMOMATS"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "function.market_access",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "市场准入",
+        "en": "Market access"
+      },
+      "definitions": {
+        "zh-CN": "本产品的职能分类提案：支持支付、价格/采购、机构配备等可及性路径。每条路径和事实状态分别记录。",
+        "en": "Proposed CRM function grouping work on reimbursement, pricing/procurement and institutional availability, with separate statuses for each pathway."
+      },
+      "context": "医院尚未配备等业务阻碍；不是系统访问控制，也不等于药品上市许可。",
+      "sourceIds": [
+        "NHSA_2025"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "metric.newly_diagnosed_patients",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "符合口径的新诊断患者",
+        "en": "Newly diagnosed patients under a defined metric"
+      },
+      "definitions": {
+        "zh-CN": "按明确疾病/诊断范围、统计期、回溯窗口和数据源判定的新诊断患者指标；不推导其已用本品。",
+        "en": "Patients meeting a specified new-diagnosis definition, including disease scope, measurement period, lookback and source. This does not establish brand treatment initiation."
+      },
+      "context": "合成NP反例；供应商模板New不一定指终身首次诊断。",
+      "sourceIds": [
+        "VEEVA_DIAGNOSIS"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "metric.new_to_brand_patients",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "本品牌新患者（按已定义口径）",
+        "en": "New-to-brand patients under a defined metric"
+      },
+      "definitions": {
+        "zh-CN": "按指定品牌、统计期、回溯、去重单位及事件证据判定的品牌新患者指标族。处方开具、配药、实际用药不同；新品牌处方数NBRx不能无条件当患者人数。",
+        "en": "A brand-specific patient metric requiring a period, lookback, deduplication rule and qualifying event. New-to-brand prescription counts are not automatically distinct-patient counts or proof of ingestion."
+      },
+      "context": "仅合成评测候选；真实企业口径、合法来源及可用粒度均待核。只有事件证据确为开始用药，才可显示“本品新开始治疗”；处方或配药代理指标须明示。",
+      "sourceIds": [
+        "INCYTE_2023",
+        "VEEVA_TREATMENT",
+        "CN_MR_2026"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "safety.pharmacovigilance",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "药物警戒",
+        "en": "Pharmacovigilance"
+      },
+      "definitions": {
+        "zh-CN": "围绕药品相关风险开展发现、识别、评估、理解、防范或控制的科学与活动；具体法定范围按地区确定。",
+        "en": "Science and activities concerned with identifying, assessing, understanding and preventing medicine-related harm, subject to local legal scope."
+      },
+      "context": "安全专业受理；不只是事件分类、填表或普通资料跟进。",
+      "sourceIds": [
+        "WHO_PV",
+        "CN_DRUG_LAW",
+        "INCYTE_2023"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "safety.adverse_event",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "不良事件",
+        "en": "Adverse event"
+      },
+      "definitions": {
+        "zh-CN": "ICH上市后语境：使用药品后出现的不利医学事件，不要求必然存在药物因果关系。保留原报告措辞，专业分类另列。",
+        "en": "An untoward medical occurrence after exposure to a medicinal product; causality is not required for the AE term. Preserve the reported wording and separate professional classification."
+      },
+      "context": "本试点只验证识别/路由，不作因果判断或正式监管编码。",
+      "sourceIds": [
+        "ICH_E2DR1"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "safety.adverse_drug_reaction",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "药品不良反应",
+        "en": "Adverse drug reaction"
+      },
+      "definitions": {
+        "zh-CN": "ICH语境关注有害、非预期药物反应及至少疑似因果；中国监管定义还需按适用文件核对。自发报告的报告分类有专门规则，不能要求代表先证明因果。",
+        "en": "ADR carries a suspected causal relationship in the ICH terminology; local definitions and reporting conventions apply. Spontaneous-report handling must not wait for a representative to prove causality."
+      },
+      "context": "ICH国际文本与中国用语对应需PV专业审查；因果未知不阻断安全转交。",
+      "sourceIds": [
+        "ICH_E2DR1",
+        "CQ_ADR_2026",
+        "CN_GVP_2021"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "role.material_owner",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "资料负责人",
+        "en": "Material owner"
+      },
+      "definitions": {
+        "zh-CN": "对指定资料内容或生命周期承担企业明确责任的人员/团队；可能属于医学或品牌内容职能。不是自动拥有著作权或全部审批权。",
+        "en": "Person or team assigned responsibility for a specific content asset or its lifecycle. The role may sit in Medical or a commercial content function."
+      },
+      "context": "H的D01登记负责人；必须附资料、范围、责任依据及有效期。",
+      "sourceIds": [
+        "VEEVA_PROMOMATS",
+        "VEEVA_MEDCOMMS"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "role.material_approver",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "资料审批人",
+        "en": "Material approver"
+      },
+      "definitions": {
+        "zh-CN": "在指定内容流程、版本和范围内具有批准职责的人员；审核意见、资料管理和批准状态分别记录。",
+        "en": "Person authorised to approve a defined asset/version within a specified workflow and scope. Review participation alone does not establish approval authority."
+      },
+      "context": "MLR是医学、法务、法规/注册相关审核框架的常见缩写；实际角色、次序和权限不能预设。",
+      "sourceIds": [
+        "VEEVA_PROMOMATS",
+        "VEEVA_MEDINQUIRY"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "workflow.business_follow_up",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "业务跟进",
+        "en": "Business follow-up"
+      },
+      "definitions": {
+        "zh-CN": "当前H：本人明确约定、之后需要核实或回复的业务事项。记录、转交、接收、备好答复、实际回复与收到各自独立。",
+        "en": "In story H, an explicitly agreed subsequent action such as checking material availability or replying; recording, assignment, acceptance, preparation and delivery are distinct states."
+      },
+      "context": "H/R/I任务；不得把兴趣自动变成承诺，不能与PV随访混用。",
+      "sourceIds": [
+        "VEEVA_MEDINQUIRY"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "workflow.medical_inquiry",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "医学问询",
+        "en": "Medical inquiry"
+      },
+      "definitions": {
+        "zh-CN": "由企业医学受理流程处理的医学信息请求，可包括文献索取或科学问题；是否入此流程取决于请求及SOP，不单由问题难度判断。",
+        "en": "A request for medical information handled through the designated medical process; it may involve literature provision or a scientific question, according to SOP."
+      },
+      "context": "H仅来源导航可自助或找owner；复杂解释、超出现有许可范围等转适当医学渠道。",
+      "sourceIds": [
+        "VEEVA_MEDINQUIRY",
+        "VEEVA_MEDCOMMS"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    },
+    {
+      "conceptId": "content.scientific_claim",
+      "conceptVersion": "0.1",
+      "preferredLabels": {
+        "zh-CN": "内容中的科学主张",
+        "en": "Scientific claim in content"
+      },
+      "definitions": {
+        "zh-CN": "在资料中表达、需要相应证据支持并按适用流程审查的科学/产品陈述；语境可用推广主张或科学陈述等名称。",
+        "en": "A scientific or product statement in content, linked to supporting evidence and reviewed within the applicable content process."
+      },
+      "context": "D01出处核对及新内容请求；仅查出处不表示模型认可该主张。",
+      "sourceIds": [
+        "VEEVA_PROMOMATS",
+        "VEEVA_TREATMENT"
+      ],
+      "labelStatus": "proposed_pilot_labels",
+      "qualifiedReviewStatus": "Qualified domain/language review and enterprise applicability review pending"
+    }
+  ]
+}
