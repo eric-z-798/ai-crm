@@ -1,0 +1,24 @@
+{
+  "name": "aicrm-workflow-slice",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "bash tests/run-ui-contract.sh",
+    "test:dom": "npm run build && node tests/dom-contract.mjs",
+    "test:real": "node tests/dom-real-smoke.mjs"
+  },
+  "dependencies": {
+    "vue": "3.5.22"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.0",
+    "@vitejs/plugin-vue": "6.0.1",
+    "jsdom": "^27.0.1",
+    "typescript": "5.9.3",
+    "vite": "7.1.9",
+    "vue-tsc": "3.1.1"
+  }
+}

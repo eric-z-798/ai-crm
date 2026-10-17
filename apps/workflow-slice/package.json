@@ -1,0 +1,8 @@
+{
+  "name": "aicrm-workflow-slice",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local synthetic Java/Vue/PostgreSQL workflow slice",
+  "scripts": {"check": "node scripts/local.mjs --check", "demo": "node scripts/local.mjs"},
+  "devDependencies": {"embedded-postgres": "18.4.0-beta.17", "pg": "8.16.3"}
+}

@@ -1,0 +1,8 @@
+node_modules/
+.runtime/
+backend/target/
+frontend/dist/
+evidence/
+*.log
+.env
+.env.*
