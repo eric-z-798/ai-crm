@@ -10,6 +10,50 @@ const accessAllowed=ref(false); let accessEpoch=0;
 const storageKey='aicrm-synthetic-slice-v1';
 const recoveryIssue=ref<'preserved'|'blocked'|null>(null);
 const unpreservedRecovery:{key:string;raw:string}[]=[];
+const recoveryCopies=ref<{key:string;raw:string}[]>([]);
+const recoveryReadFailed=ref(false);
+const exportStatus=ref<'requested'|'failed'|null>(null);
+// Never infer ownership from the currently selected role for unparseable text.
+function mayExportRecovery(raw:string){
+ if(!accessAllowed.value||!context.value||loading.value)return false;
+ try{
+  const value=JSON.parse(raw);
+  if(!isObject(value)||value.identity!==context.value.id||value.role!==role.value)return false;
+  if(value.current!==null&&(!isObject(value.current)||value.current.ownerId!==context.value.id||!visits.value.some(v=>v.id===value.current.id)))return false;
+  if(value.pending!==null)return false;
+  return true;
+ }catch{return false}
+}
+const exportableRecovery=computed(()=>recoveryCopies.value.filter(entry=>mayExportRecovery(entry.raw)));
+function collectRecoveryCopies(){
+ const copies=new Map<string,string>();
+ recoveryReadFailed.value=false;
+ try{
+  for(let i=0;i<sessionStorage.length;i++){
+   const key=sessionStorage.key(i);
+   if(key&&(key.startsWith(storageKey+'-invalid-')||key.startsWith(storageKey+'-held-rep-invalid-')||key.startsWith(storageKey+'-held-manager-invalid-'))){
+    const raw=sessionStorage.getItem(key);if(raw!==null)copies.set(key,raw);
+   }
+  }
+ }catch{localOk.value=false;recoveryReadFailed.value=true}
+ for(const entry of unpreservedRecovery)copies.set(entry.key,entry.raw);
+ recoveryCopies.value=[...copies].map(([key,raw])=>({key,raw}));
+}
+function exportRecovery(key:string){
+ exportStatus.value=null;
+ const entry=recoveryCopies.value.find(item=>item.key===key);
+ if(!entry||!mayExportRecovery(entry.raw)){exportStatus.value='failed';return}
+ let url:string|undefined;
+ let anchor:HTMLAnchorElement|undefined;
+ try{
+  url=URL.createObjectURL(new Blob([entry.raw],{type:'text/plain;charset=utf-8'}));
+  anchor=document.createElement('a');anchor.href=url;
+  anchor.download='aicrm-recovery-'+key.replace(/[^a-zA-Z0-9-]/g,'_')+'.txt';
+  document.body.appendChild(anchor);anchor.click();
+  exportStatus.value='requested';
+ }catch{exportStatus.value='failed'}
+ finally{anchor?.remove();if(url)setTimeout(()=>URL.revokeObjectURL(url!),1000)}
+}
 const isObject=(value:any):value is Record<string,any>=>!!value&&typeof value==='object'&&!Array.isArray(value);
 const validTime=(value:any)=>typeof value==='string'&&value.length>0&&Number.isFinite(Date.parse(value));
 function validRecovery(value:any){
@@ -30,9 +74,10 @@ function preserveRejectedRecovery(){
    while(sessionStorage.getItem(key)!==null)key=prefix+'-'+(++index);
    sessionStorage.setItem(key,entry.raw);
    unpreservedRecovery.shift();
-  }catch{recoveryIssue.value='blocked';localOk.value=false;return false}
+  }catch{recoveryIssue.value='blocked';localOk.value=false;collectRecoveryCopies();return false}
  }
  if(recoveryIssue.value)recoveryIssue.value='preserved';
+ collectRecoveryCopies();
  return true;
 }
 function readRecovery(raw:string,key:string){
@@ -56,7 +101,7 @@ function isolateEditor(){if(dirty.value||request.value.trim()||pending.value){co
 function revokeAccess(){if(dirty.value||request.value.trim()||pending.value)heldInMemory.set(role.value,recoverySnapshot());try{if(heldInMemory.has(role.value))sessionStorage.setItem(storageKey+'-held-'+role.value,JSON.stringify(heldInMemory.get(role.value)))}catch{localOk.value=false}accessEpoch++;accessAllowed.value=false;visits.value=[];handoffs.value=[];current.value=null;latest.value=null;context.value=null;editing.value=false;pending.value=null;request.value='';Object.assign(form,{organization:'',occurredOn:'',notes:''});notice.value='';error.value=t.value.accessChanged;try{sessionStorage.removeItem(storageKey)}catch{localOk.value=false}}
 function isAccessError(e:unknown){return e instanceof ApiError&&(e.status===401||e.status===403)}
 function explain(e:unknown){if(e instanceof ApiError){if(e.status===409)return t.value.conflict; if(e.status===401||e.status===403)return `${t.value.error} (${e.status}: ${e.code})`;return `${t.value.error} (${e.code})`}return t.value.unknown}
-async function load(){const epoch=++accessEpoch;loading.value=true;listError.value=false;try{const ctx=await api<{id:string;role:string;tenant:string}>(role.value,'/context');const [v,h]=await Promise.all([api<Visit[]>(role.value,'/visits'),api<Handoff[]>(role.value,'/handoffs')]);if(epoch!==accessEpoch)return;const identityChanged=!!context.value&&context.value.id!==ctx.id;const selectedUnavailable=!!current.value&&!v.some(item=>item.id===current.value!.id);if(identityChanged||selectedUnavailable){isolateEditor();error.value=t.value.scopeChanged}if(latest.value&&!v.some(item=>item.id===latest.value!.id))latest.value=null;context.value=ctx;visits.value=v;handoffs.value=h;accessAllowed.value=true;restoreQuarantine()}catch(e){if(isAccessError(e))revokeAccess();listError.value=true}finally{loading.value=false}}
+async function load(){const epoch=++accessEpoch;loading.value=true;listError.value=false;try{const ctx=await api<{id:string;role:string;tenant:string}>(role.value,'/context');const [v,h]=await Promise.all([api<Visit[]>(role.value,'/visits'),api<Handoff[]>(role.value,'/handoffs')]);if(epoch!==accessEpoch)return;const identityChanged=!!context.value&&context.value.id!==ctx.id;const selectedUnavailable=!!current.value&&!v.some(item=>item.id===current.value!.id);if(identityChanged||selectedUnavailable){isolateEditor();error.value=t.value.scopeChanged}if(latest.value&&!v.some(item=>item.id===latest.value!.id))latest.value=null;context.value=ctx;visits.value=v;handoffs.value=h;accessAllowed.value=true;restoreQuarantine()}catch(e){if(isAccessError(e))revokeAccess();listError.value=true}finally{loading.value=false;exportStatus.value=null;collectRecoveryCopies()}}
 function leaveAllowed(){return !pending.value&&!busy.value&&(!(dirty.value||request.value.trim())||window.confirm(t.value.discard))}
 function open(v:Visit){if(!accessAllowed.value||!leaveAllowed())return;current.value={...v};Object.assign(form,{organization:v.organization,occurredOn:v.occurredOn,notes:v.notes});editing.value=true;error.value='';notice.value='';latest.value=null;request.value=''}
 function fresh(){if(!accessAllowed.value||!leaveAllowed())return;current.value=null;Object.assign(form,{organization:'',occurredOn:'',notes:''});editing.value=true;request.value='';error.value='';notice.value='';latest.value=null;tab.value='visits';nextTick(()=>document.getElementById('organization')?.focus())}
@@ -91,7 +136,12 @@ window.addEventListener('beforeunload',e=>{if(dirty.value||pending.value||reques
  <main><div class="demo-banner"><strong>{{t.demo}}</strong><span>{{t.demoInfo}}</span></div><section class="page-heading"><div><p class="eyebrow">{{role==='rep'?t.representative:t.manager}} · {{context?.tenant??'—'}}</p><h1>{{role==='rep'?t.title:t.managerTitle}}</h1><p>{{role==='rep'?t.subtitle:t.managerSub}}</p></div><button v-if="role==='rep'" class="primary" :disabled="!accessAllowed||busy||!!pending" @click="fresh">＋ {{t.new}}</button></section>
  <div v-if="accessAllowed" class="summary-grid"><div><span>{{t.drafts}}</span><strong>{{loading&&!context?'—':visits.filter(v=>v.status==='DRAFT').length}}</strong></div><div><span>{{t.recorded}}</span><strong>{{loading&&!context?'—':visits.filter(v=>v.status==='RECORDED').length}}</strong></div><div><span>{{t.handoffCount}}</span><strong>{{loading&&!context?'—':handoffs.length}}</strong></div></div>
  <div v-if="recoveryIssue" class="alert warning" role="alert">{{recoveryIssue==='blocked'?t.recoveryBlocked:t.recoveryInvalid}}</div>
- <div v-if="!localOk&&!recoveryIssue" class="alert warning" role="alert">{{t.localFail}}</div>
+ <section v-if="accessAllowed&&(recoveryCopies.length||recoveryIssue||recoveryReadFailed)" class="alert warning" aria-labelledby="recovery-title">
+  <h2 id="recovery-title">{{t.recoveryTitle}}</h2><p>{{t.recoveryExportHint}}</p><p v-if="recoveryReadFailed" role="status">{{t.recoveryReadFailed}}</p><p v-else-if="!exportableRecovery.length">{{t.recoveryNoExport}}</p>
+  <div v-for="(entry,index) in exportableRecovery" :key="entry.key" class="button-row"><button type="button" :disabled="loading||busy" @click="exportRecovery(entry.key)">{{t.recoveryExport}} {{index+1}}</button></div>
+  <p v-if="exportStatus" role="status">{{exportStatus==='requested'?t.recoveryExportRequested:t.recoveryExportFailed}}</p>
+ </section>
+ <div v-if="!localOk&&!recoveryIssue"  class="alert warning" role="alert">{{t.localFail}}</div>
  <div v-if="listError" class="alert error" role="alert">{{t.listError}} <button @click="load" :disabled="loading">{{t.refresh}}</button></div>
  <div v-if="notice" class="alert success" role="status">{{notice}}</div>
  <div v-if="error" class="alert error" role="alert">{{error}}<button v-if="current&&!pending" @click="showLatest" :disabled="busy">{{t.loadLatest}}</button></div>

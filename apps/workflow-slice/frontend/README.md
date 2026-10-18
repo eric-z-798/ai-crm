@@ -26,10 +26,18 @@ Strict TypeScript and Vite production build passed. Built-bundle mocked DOM cont
 
 Chromium startup was attempted but the command sandbox denied required local IPC sockets. Escalated execution was also blocked by environment startup. Therefore this frontend author has **not** verified real browser visual layout, screenshots, 200% zoom, screen readers, mobile device behavior or IME composition. Playwright tests are provided but not claimed passed. Parent integration may separately run actual backend tests; their evidence must be retained separately.
 
-Broader CRM capabilities, historical-record correction flow, identity/tenant production security, real AI, medical approval, export, server-side draft autosave, multiple tabs conflict UX and all-role/full-scope product validation are not delivered by this slice.
+Broader CRM capabilities, historical-record correction flow, identity/tenant production security, real AI, medical approval, business-record export, server-side draft autosave, multiple tabs conflict UX and all-role/full-scope product validation are not delivered by this slice.
 
 ## Recovery-format regression
 
 Run `node tests/recovery-contract.mjs` after `npm ci`. After `npm run build`, run `node tests/recovery-dom-smoke.mjs` for the built-bundle recovery alert and raw-preservation smoke test in JSDOM. This uses the locked Vue runtime in isolated Node VMs with synthetic storage and GET contracts, not a real browser or backend. It covers malformed/partial snapshots, backup-write failure/retry, original-text retention, valid unversioned/v1 snapshots, and null/date guards.
 
 Recovery accepts the existing complete unversioned format and schema version 1. Incomplete or incompatible snapshots are rejected rather than partially applied; no historical field-name migration is claimed. Their exact raw bytes are copied to separate same-tab `-invalid-` entries before ordinary autosave may replace the working entry. If that protective copy fails, autosave pauses and the next edit retries preserving the raw copy first. A bilingual alert outside the editor describes either state. These copies last only for the browser tab/session; this is not durable backup, cross-tab recovery or an automatic repair of the malformed content. Existing authorization checks remain in force.
+
+## Limited original recovery export (P56 subtask)
+
+After a rejected recovery snapshot is preserved, an independent recovery section offers an explicit Download original copy button in Chinese and English. It is available outside the editor, persists across a new draft, and discovers retained copies after a same-tab reload. A plain-text UTF-8 file contains the stored string unchanged, including whitespace; different storage keys produce different filenames. No automatic import, repair, upload, deletion, or business API write occurs. Download requested means only that the browser was asked; users must check the file.
+
+Only parseable copies whose identity and role match the loaded context are eligible. For a non-null current record, its owner must match and its ID must remain in the accessible visits. Pending requests are excluded. Unparseable/unknown-ownership originals remain preserved but unavailable for export. This is a conservative demo UI boundary, not a production authentication or security assessment. A storage-read error and no eligible copies have explicit messages. Downloads fail without claiming success.
+
+Session storage is temporary, tab-scoped and not a durable backup. Export does not make an invalid snapshot safe to restore. The overall P56 recovery workflow, authentic browser download/reload testing, backend integration and production acceptance remain open.
