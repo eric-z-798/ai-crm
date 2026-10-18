@@ -8,16 +8,48 @@ type Pending={key:string;path:string;method:string;body:any;kind:'save'|'confirm
 const lang=ref<'zh'|'en'>('zh'),t=computed(()=>copy[lang.value]),role=ref('rep'),visits=ref<Visit[]>([]),handoffs=ref<Handoff[]>([]),current=ref<Visit|null>(null),editing=ref(false),form=reactive({organization:'',occurredOn:'',notes:''}),request=ref(''),pending=ref<Pending|null>(null),busy=ref(false),loading=ref(false),error=ref(''),notice=ref(''),listError=ref(false),aiOpen=ref(false),latest=ref<Visit|null>(null),localOk=ref(true),composing=ref(false),context=ref<{id:string;role:string;tenant:string}|null>(null),tab=ref('visits');
 const accessAllowed=ref(false); let accessEpoch=0;
 const storageKey='aicrm-synthetic-slice-v1';
+const recoveryIssue=ref<'preserved'|'blocked'|null>(null);
+const unpreservedRecovery:{key:string;raw:string}[]=[];
+const isObject=(value:any):value is Record<string,any>=>!!value&&typeof value==='object'&&!Array.isArray(value);
+const validTime=(value:any)=>typeof value==='string'&&value.length>0&&Number.isFinite(Date.parse(value));
+function validRecovery(value:any){
+ if(!isObject(value)||(value.schemaVersion!==undefined&&value.schemaVersion!==1)||!['rep','manager'].includes(value.role)||typeof value.identity!=='string'||!['zh','en'].includes(value.lang)||typeof value.editing!=='boolean'||!['visits','handoffs'].includes(value.tab)||typeof value.request!=='string')return false;
+ const fields=['organization','occurredOn','notes'];
+ if(!isObject(value.form)||Object.keys(value.form).length!==fields.length||!fields.every(key=>typeof value.form[key]==='string'))return false;
+ const record=value.current;
+ if(record!==null&&(!isObject(record)||!['id','organization','occurredOn','notes','ownerId'].every(key=>typeof record[key]==='string')||!Number.isSafeInteger(record.revision)||record.revision<1||!['DRAFT','RECORDED'].includes(record.status)||!validTime(record.createdAt)||!validTime(record.updatedAt)))return false;
+ if(!value.editing&&(record!==null||Object.values(value.form).some(Boolean)||value.request))return false;
+ const command=value.pending;
+ return command===null||(isObject(command)&&['key','path','method','role','kind'].every(key=>typeof command[key]==='string')&&isObject(command.body));
+}
+function preserveRejectedRecovery(){
+ while(unpreservedRecovery.length){
+  const entry=unpreservedRecovery[0];
+  try{
+   const prefix=entry.key+'-invalid-'+Date.now();let key=prefix,index=0;
+   while(sessionStorage.getItem(key)!==null)key=prefix+'-'+(++index);
+   sessionStorage.setItem(key,entry.raw);
+   unpreservedRecovery.shift();
+  }catch{recoveryIssue.value='blocked';localOk.value=false;return false}
+ }
+ if(recoveryIssue.value)recoveryIssue.value='preserved';
+ return true;
+}
+function readRecovery(raw:string,key:string){
+ try{const value=JSON.parse(raw);if(validRecovery(value))return value}catch{/* Preserve malformed bytes without interpreting or rewriting them. */}
+ if(!unpreservedRecovery.some(entry=>entry.key===key&&entry.raw===raw))unpreservedRecovery.push({key,raw});
+ recoveryIssue.value='blocked';preserveRejectedRecovery();return null;
+}
 const heldInMemory=new Map<string,any>();
 const snapshot=()=>({organization:form.organization,occurredOn:form.occurredOn,notes:form.notes});
 const dirty=computed(()=>editing.value&&(!current.value?Object.values(snapshot()).some(Boolean):JSON.stringify(snapshot())!==JSON.stringify({organization:current.value.organization,occurredOn:current.value.occurredOn,notes:current.value.notes})));
 const editable=computed(()=>accessAllowed.value&&role.value==='rep'&&current.value?.status!=='RECORDED');
 const statusText=computed(()=>dirty.value?t.value.unsaved:current.value?.status==='RECORDED'?t.value.immutable:current.value?t.value.saved:t.value.fresh);
-const formatTime=(date:string)=>new Intl.DateTimeFormat(lang.value==='zh'?'zh-CN':'en',{dateStyle:'medium',timeStyle:'short'}).format(new Date(date));
-function recoverySnapshot(){return {role:role.value,identity:context.value?.id,lang:lang.value,current:current.value,editing:editing.value,form:snapshot(),request:request.value,pending:pending.value,tab:tab.value}}
-function persist(){try { if(!accessAllowed.value){sessionStorage.removeItem(storageKey);return}sessionStorage.setItem(storageKey,JSON.stringify(recoverySnapshot()));localOk.value=true}catch{localOk.value=false}}
-function restoreCandidate(s:any){if(!accessAllowed.value||!s||s.role!==role.value||s.identity!==context.value?.id||s.current&&!visits.value.some(v=>v.id===s.current.id))return false;current.value=s.current;editing.value=!!s.editing;Object.assign(form,s.form);request.value=s.request??'';pending.value=s.pending;tab.value=s.tab??'visits';notice.value=t.value.retained;return true}
-function restoreQuarantine(){if(editing.value||pending.value)return;try{const key=storageKey+'-held-'+role.value;const raw=sessionStorage.getItem(key);const held=heldInMemory.get(role.value)??(raw?JSON.parse(raw):null);if(held&&restoreCandidate(held)){sessionStorage.removeItem(key);heldInMemory.delete(role.value)}}catch{localOk.value=false}}
+const formatTime=(date:unknown)=>validTime(date)?new Intl.DateTimeFormat(lang.value==='zh'?'zh-CN':'en',{dateStyle:'medium',timeStyle:'short'}).format(new Date(date as string)):t.value.timeUnavailable;
+function recoverySnapshot(){return {schemaVersion:1,role:role.value,identity:context.value?.id,lang:lang.value,current:current.value,editing:editing.value,form:snapshot(),request:request.value,pending:pending.value,tab:tab.value}}
+function persist(){if(!preserveRejectedRecovery())return;try { if(!accessAllowed.value){sessionStorage.removeItem(storageKey);return}sessionStorage.setItem(storageKey,JSON.stringify(recoverySnapshot()));localOk.value=true}catch{localOk.value=false}}
+function restoreCandidate(s:any){if(!validRecovery(s))return false;if(!accessAllowed.value||!s||s.role!==role.value||s.identity!==context.value?.id||s.current&&!visits.value.some(v=>v.id===s.current.id))return false;current.value=s.current;editing.value=!!s.editing;Object.assign(form,s.form);request.value=s.request??'';pending.value=s.pending;tab.value=s.tab??'visits';notice.value=t.value.retained;return true}
+function restoreQuarantine(){if(editing.value||pending.value)return;try{const key=storageKey+'-held-'+role.value;const raw=sessionStorage.getItem(key);const held=heldInMemory.get(role.value)??(raw?readRecovery(raw,key):null);if(held&&restoreCandidate(held)){sessionStorage.removeItem(key);heldInMemory.delete(role.value)}}catch{localOk.value=false}}
 watch([form,current,editing,request,pending,role,lang,tab],persist,{deep:true});
 watch(lang,()=>{document.documentElement.lang=lang.value==='zh'?'zh-CN':'en';document.title='AICRM · '+t.value.workspace});
 function isolateEditor(){if(dirty.value||request.value.trim()||pending.value){const held=recoverySnapshot();heldInMemory.set(role.value,held);try{sessionStorage.setItem(storageKey+'-held-'+role.value,JSON.stringify(held))}catch{localOk.value=false}}current.value=null;latest.value=null;editing.value=false;pending.value=null;request.value='';Object.assign(form,{organization:'',occurredOn:'',notes:''});notice.value='';try{sessionStorage.removeItem(storageKey)}catch{localOk.value=false}}
@@ -41,14 +73,14 @@ function updateResult(p:Pending,result:any){
 }
 async function perform(p:Pending){if(!accessAllowed.value)return;const epoch=accessEpoch;busy.value=true;error.value='';notice.value='';try{const result=await api(p.role,p.path,p.method,p.body,p.key);if(!accessAllowed.value||epoch!==accessEpoch)return;updateResult(p,result);await load()}catch(e){if(isAccessError(e)){revokeAccess();return}error.value=explain(e);if(e instanceof ApiError&&e.status<500){pending.value=null;persist()}}finally{busy.value=false}}
 async function mutate(kind:Pending['kind'],path:string,method:string,body:any){if(!accessAllowed.value||busy.value||pending.value)return;const p={kind,path,method,body,key:crypto.randomUUID(),role:role.value};pending.value=p;persist();await perform(p)}
-async function save(){if(composing.value||current.value&&!dirty.value)return;if(form.organization.length>200||form.notes.length>4000){error.value=t.value.visitLengthError;return}if(!form.organization.trim()||!form.occurredOn||!form.notes.trim()){error.value=t.value.required;return}if(current.value){await mutate('save',`/visits/${current.value.id}`,'PUT',{...snapshot(),expectedRevision:current.value.revision})}else await mutate('save','/visits','POST',snapshot())}
+async function save(){if(composing.value||current.value&&!dirty.value)return;if(!['organization','occurredOn','notes'].every(key=>typeof form[key as keyof typeof form]==='string')){error.value=t.value.invalidDraft;return}if(form.organization.length>200||form.notes.length>4000){error.value=t.value.visitLengthError;return}if(!form.organization.trim()||!form.occurredOn||!form.notes.trim()){error.value=t.value.required;return}if(current.value){await mutate('save',`/visits/${current.value.id}`,'PUT',{...snapshot(),expectedRevision:current.value.revision})}else await mutate('save','/visits','POST',snapshot())}
 async function confirmRecord(){if(!current.value||dirty.value||current.value.status!=='DRAFT'){error.value=t.value.cannotConfirm;return}await mutate('confirm',`/visits/${current.value.id}/confirm`,'POST',{expectedRevision:current.value.revision})}
 async function sendHandoff(){if(request.value.length>2000){error.value=t.value.requestLengthError;return}if(!current.value||!request.value.trim())return;await mutate('handoff',`/visits/${current.value.id}/handoffs`,'POST',{expectedRevision:current.value.revision,request:request.value})}
 async function checkResult(retryIfMissing=false){if(!accessAllowed.value||!pending.value||busy.value)return;const original=pending.value;busy.value=true;let retry=false;try{const result=await api(original.role,`/commands/${original.key}`);updateResult(original,result);await load()}catch(e){if(isAccessError(e)){revokeAccess();return}if(e instanceof ApiError&&e.status===404){error.value=t.value.notFound;retry=retryIfMissing}else error.value=explain(e)}finally{busy.value=false}if(retry&&accessAllowed.value&&pending.value?.key===original.key)await perform(original)}
 async function showLatest(){if(!current.value||!accessAllowed.value)return;const epoch=accessEpoch;busy.value=true;try{const all=await api<Visit[]>(role.value,'/visits');if(!accessAllowed.value||epoch!==accessEpoch)return;latest.value=all.find(v=>v.id===current.value!.id)??null;visits.value=all;if(!latest.value){isolateEditor();error.value=t.value.scopeChanged}}catch(e){if(isAccessError(e))revokeAccess();else error.value=explain(e)}finally{busy.value=false}}
 function rebase(){if(!latest.value)return;if(latest.value.status==='RECORDED'){error.value=t.value.serverRecorded;return}current.value=latest.value;latest.value=null;error.value='';notice.value=t.value.review}
 function changeLanguage(){if(composing.value)return;const focused=document.activeElement as HTMLElement;lang.value=lang.value==='zh'?'en':'zh';nextTick(()=>focused?.focus())}
-onMounted(async()=>{let recovered:any=null;try{const raw=sessionStorage.getItem(storageKey);if(raw){recovered=JSON.parse(raw);if(['rep','manager'].includes(recovered.role))role.value=recovered.role;if(['zh','en'].includes(recovered.lang))lang.value=recovered.lang}}catch{localOk.value=false}await load();if(accessAllowed.value&&recovered&&!editing.value){if(!restoreCandidate(recovered)){try{sessionStorage.setItem(storageKey+'-held-'+role.value,JSON.stringify(recovered))}catch{localOk.value=false}}}if(accessAllowed.value&&pending.value)await checkResult()});
+onMounted(async()=>{let recovered:any=null;try{const raw=sessionStorage.getItem(storageKey);if(raw){recovered=readRecovery(raw,storageKey);if(recovered&&['rep','manager'].includes(recovered.role))role.value=recovered.role;if(recovered&&['zh','en'].includes(recovered.lang))lang.value=recovered.lang}}catch{localOk.value=false}await load();if(accessAllowed.value&&recovered&&!editing.value){if(!restoreCandidate(recovered)){try{sessionStorage.setItem(storageKey+'-held-'+role.value,JSON.stringify(recovered))}catch{localOk.value=false}}}if(accessAllowed.value&&pending.value)await checkResult()});
 window.addEventListener('beforeunload',e=>{if(dirty.value||pending.value||request.value.trim()){e.preventDefault();e.returnValue=''}});
 </script>
 
@@ -58,6 +90,8 @@ window.addEventListener('beforeunload',e=>{if(dirty.value||pending.value||reques
  <div class="main-shell"><header class="topbar"><span>{{t.today}}</span><div class="top-actions"><label class="sr-only" for="role">{{t.scope}}</label><select id="role" :value="role" :disabled="busy||!!pending" @change="switchRole"><option value="rep">{{t.representative}}</option><option value="manager">{{t.manager}}</option></select><button class="language" :disabled="composing" :aria-label="t.language" @click="changeLanguage">{{lang==='zh'?'English':'简体中文'}}</button></div></header>
  <main><div class="demo-banner"><strong>{{t.demo}}</strong><span>{{t.demoInfo}}</span></div><section class="page-heading"><div><p class="eyebrow">{{role==='rep'?t.representative:t.manager}} · {{context?.tenant??'—'}}</p><h1>{{role==='rep'?t.title:t.managerTitle}}</h1><p>{{role==='rep'?t.subtitle:t.managerSub}}</p></div><button v-if="role==='rep'" class="primary" :disabled="!accessAllowed||busy||!!pending" @click="fresh">＋ {{t.new}}</button></section>
  <div v-if="accessAllowed" class="summary-grid"><div><span>{{t.drafts}}</span><strong>{{loading&&!context?'—':visits.filter(v=>v.status==='DRAFT').length}}</strong></div><div><span>{{t.recorded}}</span><strong>{{loading&&!context?'—':visits.filter(v=>v.status==='RECORDED').length}}</strong></div><div><span>{{t.handoffCount}}</span><strong>{{loading&&!context?'—':handoffs.length}}</strong></div></div>
+ <div v-if="recoveryIssue" class="alert warning" role="alert">{{recoveryIssue==='blocked'?t.recoveryBlocked:t.recoveryInvalid}}</div>
+ <div v-if="!localOk&&!recoveryIssue" class="alert warning" role="alert">{{t.localFail}}</div>
  <div v-if="listError" class="alert error" role="alert">{{t.listError}} <button @click="load" :disabled="loading">{{t.refresh}}</button></div>
  <div v-if="notice" class="alert success" role="status">{{notice}}</div>
  <div v-if="error" class="alert error" role="alert">{{error}}<button v-if="current&&!pending" @click="showLatest" :disabled="busy">{{t.loadLatest}}</button></div>

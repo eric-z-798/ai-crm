@@ -1,0 +1,14 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import {JSDOM} from 'jsdom';
+const html=fs.readFileSync(new URL('../dist/index.html',import.meta.url),'utf8');
+const asset=html.match(/src="(\/assets\/[^\"]+\.js)"/)[1];
+const code=fs.readFileSync(new URL('../dist'+asset,import.meta.url),'utf8');
+const dom=new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>',{url:'https://synthetic.invalid/',runScripts:'outside-only'});
+const w=dom.window,key='aicrm-synthetic-slice-v1',raw='{"form":{"notes":"truncated synthetic draft"';const errors=[];
+w.addEventListener('error',e=>errors.push(e.message));w.sessionStorage.setItem(key,raw);
+w.fetch=async(path,options)=>{assert.equal(options.method,'GET');return {ok:true,json:async()=>path==='/api/context'?{id:'synthetic-dom-rep',role:'rep',tenant:'synthetic-only'}:[]}};
+w.eval(code);await new Promise(resolve=>setTimeout(resolve,30));
+assert.equal(errors.length,0);const alert=w.document.querySelector('[role="alert"]');assert(alert);assert(alert.textContent.includes('原始副本已保留'));assert.equal(w.document.querySelector('textarea'),null);
+const preserved=Array.from({length:w.sessionStorage.length},(_,i)=>w.sessionStorage.key(i)).find(k=>k.includes('-invalid-'));assert.equal(w.sessionStorage.getItem(preserved),raw);
+const newButton=[...w.document.querySelectorAll('button')].find(e=>e.textContent.includes('记录一次交流'));newButton.click();await new Promise(resolve=>setTimeout(resolve,0));
+assert(w.document.querySelector('textarea'));assert(w.document.querySelector('[role="alert"]').textContent.includes('原始副本已保留'));assert.equal(w.sessionStorage.getItem(preserved),raw);
+console.log(JSON.stringify({result:'PASS',scope:'Built production Vue bundle in JSDOM; recovery alert is outside hidden editor, visible after starting new draft, and original raw backup survives. In-process GET contract only; not real browser or backend.',errors},null,2));dom.window.close();
