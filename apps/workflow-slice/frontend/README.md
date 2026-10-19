@@ -1,43 +1,21 @@
-# AICRM synthetic workflow frontend
+# Representative workflow frontend
 
-Vue 3 + TypeScript, built for the local Java/PostgreSQL slice. Only fictional data and public demo fixture identities (`demo-rep`, `demo-manager`). This is not production authentication, a real enterprise deployment or an integrated AI product.
+Vue 3 and TypeScript frontend for the paired local Java/PostgreSQL workflow slice. It records manual decisions, not AI inference.
 
-## Run
+From this directory:
 
-- `npm ci --cache /tmp/crm-npm-cache`
-- `npm run build`
-- `npm run dev` binds **127.0.0.1:5173**, strictly; `/api` proxies to **127.0.0.1:8787**.
-- `npm run test:dom` runs the production bundle inside JSDOM with mock API contracts.
-- `npm test` runs headless Chromium contract tests; requires Chromium that can open its local IPC sockets.
-- `node tests/dom-real-smoke.mjs` runs the built Vue UI against the actual running Vite+backend, using JSDOM and real fetch. All services must share the same network environment.
-- `node tests/ui-real-smoke.mjs` is the actual browser equivalent and captures desktop/mobile screenshots when Chromium is supported.
+```sh
+npm ci
+npm test
+npm run dev
+```
 
-## Implemented subset
+`npm test` runs 118 pure-domain/DTO/event-draft cases, strict Vue/TypeScript plus Vite build, and 14 built-Vue mocked-API JSDOM scenarios. The paired actual-API suites are run from the parent directory with `npm run test:ui-api` and `npm run test:business-regressions`; the runner starts a fresh synthetic server/database and provides its API address.
 
-Task-first representative workspace: create, save, resume and explicitly confirm an immutable recorded interaction. Handoff is separately optional; synthetic fixed recipient `manager-a` is displayed. Manager must explicitly receive, then separately accept responsibility. Viewing a request does not change its state.
+The editor retains the full communication text, optional actual occurrence day and manually reviewed declarations. Local draft retention explicitly says it has not been sent to the server. Server recording saves the communication and commitments together. The personal-commitment view is independent of communication day; progress, reply facts and completion remain distinct.
 
-Chinese/English UI changes only labels. Original content and saved state survive switching. Draft text and pending requests recover from same-tab sessionStorage; failures to store locally are disclosed. Local recovery is not server persistence. Cached content is not displayed before an initial successful access check. P62: a 401/403 clears all displayed/server-loaded state and pauses operations. Unsubmitted draft text, handoff text and unresolved intents are moved to a separate, invisible same-tab recovery entry. Recovery requires a newly successful context/list check with the same identity; record-linked drafts additionally require that record to remain visible in the current authorized list. A successful list refresh also reconciles the selected record and current identity; a missing selected record or changed identity hides the editor and isolates any unsubmitted edits. Otherwise the entry stays isolated and is not rendered. A new manual draft can resume only for the same verified identity. Session storage remains a synthetic-demo recovery mechanism, not production encrypted storage. In-flight save receipts do not overwrite newer edits or falsely clear dirty state. Conflicts preserve text and require explicit review/rebase. Uncertain writes retain an idempotency key and are looked up before the retry action; only an explicit not-found result permits replay with the original key. A pending confirm keeps the reviewed fields locked until its outcome is resolved. No forced tasks or automatic handoffs.
+Event drafts retain their editing-time scope. Refresh cannot silently apply old text to a newer promise. A late reply requires an explicit content-revision choice. Main/held recovery bytes and old pending requests are retained; storage failure blocks new POSTs rather than sending an unrecoverable request. Session storage is not a cross-device durable draft service and cannot survive the user clearing all browser data.
 
-AI panel states honestly that product AI is unavailable and continues manual editing of the same draft; it has no fake generation endpoint.
+Both languages preserve user text. History uses readable event/time/state labels. Relative dates require manual reference-day review; no date is inferred from words such as “tomorrow.”
 
-## Verification boundary
-
-Strict TypeScript and Vite production build passed. Built-bundle mocked DOM contract tests passed for original-text language retention, delayed response/newer text preservation, stale conflict/rebase, lost-response command recovery without duplicate writes, immutable explicit confirmation, optional handoff and received/accepted separation.
-
-Chromium startup was attempted but the command sandbox denied required local IPC sockets. Escalated execution was also blocked by environment startup. Therefore this frontend author has **not** verified real browser visual layout, screenshots, 200% zoom, screen readers, mobile device behavior or IME composition. Playwright tests are provided but not claimed passed. Parent integration may separately run actual backend tests; their evidence must be retained separately.
-
-Broader CRM capabilities, historical-record correction flow, identity/tenant production security, real AI, medical approval, business-record export, server-side draft autosave, multiple tabs conflict UX and all-role/full-scope product validation are not delivered by this slice.
-
-## Recovery-format regression
-
-Run `node tests/recovery-contract.mjs` after `npm ci`. After `npm run build`, run `node tests/recovery-dom-smoke.mjs` for the built-bundle recovery alert and raw-preservation smoke test in JSDOM. This uses the locked Vue runtime in isolated Node VMs with synthetic storage and GET contracts, not a real browser or backend. It covers malformed/partial snapshots, backup-write failure/retry, original-text retention, valid unversioned/v1 snapshots, and null/date guards.
-
-Recovery accepts the existing complete unversioned format and schema version 1. Incomplete or incompatible snapshots are rejected rather than partially applied; no historical field-name migration is claimed. Their exact raw bytes are copied to separate same-tab `-invalid-` entries before ordinary autosave may replace the working entry. If that protective copy fails, autosave pauses and the next edit retries preserving the raw copy first. A bilingual alert outside the editor describes either state. These copies last only for the browser tab/session; this is not durable backup, cross-tab recovery or an automatic repair of the malformed content. Existing authorization checks remain in force.
-
-## Limited original recovery export (P56 subtask)
-
-After a rejected recovery snapshot is preserved, an independent recovery section offers an explicit Download original copy button in Chinese and English. It is available outside the editor, persists across a new draft, and discovers retained copies after a same-tab reload. A plain-text UTF-8 file contains the stored string unchanged, including whitespace; different storage keys produce different filenames. No automatic import, repair, upload, deletion, or business API write occurs. Download requested means only that the browser was asked; users must check the file.
-
-Only parseable copies whose identity and role match the loaded context are eligible. For a non-null current record, its owner must match and its ID must remain in the accessible visits. Pending requests are excluded. Unparseable/unknown-ownership originals remain preserved but unavailable for export. This is a conservative demo UI boundary, not a production authentication or security assessment. A storage-read error and no eligible copies have explicit messages. Downloads fail without claiming success.
-
-Session storage is temporary, tab-scoped and not a durable backup. Export does not make an invalid snapshot safe to restore. The overall P56 recovery workflow, authentic browser download/reload testing, backend integration and production acceptance remain open.
+The default Vite proxy targets loopback port 8787. Do not use synthetic demo identities with real data. JSDOM passing does not establish browser/mobile layout or visual acceptance. Old frontend test files remain as historical references; only the named current package scripts are advertised as current passing suites.

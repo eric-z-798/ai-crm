@@ -3,6 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "description": "Local synthetic Java/Vue/PostgreSQL workflow slice",
-  "scripts": {"check": "node scripts/local.mjs --check", "demo": "node scripts/local.mjs"},
-  "devDependencies": {"embedded-postgres": "18.4.0-beta.17", "pg": "8.16.3"}
+  "scripts": {
+    "check": "node scripts/local.mjs --check",
+    "demo": "node scripts/local.mjs",
+    "test:atomic": "node scripts/atomic-local.mjs",
+    "test:ui-api": "node scripts/atomic-local.mjs --ui-check=tests/rep-real-api-dom.test.mjs",
+    "test:business-regressions": "node scripts/atomic-local.mjs --ui-check=tests/candidate2-business-regressions.mjs",
+    "serve:atomic": "node scripts/atomic-local.mjs --serve",
+    "test:runner": "node --test --test-reporter=tap tests/runner-config.test.mjs"
+  },
+  "devDependencies": {
+    "embedded-postgres": "18.4.0-beta.17",
+    "pg": "8.16.3"
+  }
 }

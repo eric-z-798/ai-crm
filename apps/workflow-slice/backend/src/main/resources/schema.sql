@@ -39,3 +39,23 @@ CREATE INDEX IF NOT EXISTS handoffs_scope ON handoffs(tenant,recipient_id,owner_
 
 -- Existing synthetic databases fail closed for receipts made before operation-scope tracking.
 ALTER TABLE command_receipts ADD COLUMN IF NOT EXISTS command_type text NOT NULL DEFAULT 'unknown';
+
+-- Additive v2 recording migration. Existing visit rows/receipts keep their original values.
+ALTER TABLE visits ALTER COLUMN occurred_on DROP NOT NULL;
+CREATE TABLE IF NOT EXISTS visit_history (
+ visit_id text NOT NULL REFERENCES visits(id), revision integer NOT NULL,
+ snapshot jsonb NOT NULL, captured_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(visit_id,revision)
+);
+CREATE TABLE IF NOT EXISTS follow_up_reviews (
+ visit_id text PRIMARY KEY REFERENCES visits(id), tenant text NOT NULL,
+ owner_id text NOT NULL REFERENCES actors(id), review jsonb NOT NULL,
+ recorded_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS commitments (
+ id text PRIMARY KEY, tenant text NOT NULL, team text NOT NULL,
+ owner_id text NOT NULL REFERENCES actors(id), visit_id text NOT NULL REFERENCES visits(id),
+ revision integer NOT NULL CHECK(revision>0), document jsonb NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS commitments_scope ON commitments(tenant,team,owner_id);

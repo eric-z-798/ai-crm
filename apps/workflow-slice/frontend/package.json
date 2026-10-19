@@ -1,14 +1,15 @@
 {
   "name": "aicrm-workflow-slice",
-  "version": "0.1.0",
+  "version": "0.2.0-rep-integration.2",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "vue-tsc --noEmit && vite build",
-    "test": "bash tests/run-ui-contract.sh",
-    "test:dom": "npm run build && node tests/dom-contract.mjs",
-    "test:real": "node tests/dom-real-smoke.mjs"
+    "test": "npm run test:domain && npm run test:dom",
+    "test:dom": "npm run build && node --test --test-reporter=tap tests/rep-integration-dom.test.mjs",
+    "test:real": "node --test --test-reporter=tap tests/rep-real-api-dom.test.mjs",
+    "test:domain": "node --test --test-reporter=tap tests/domain-v3/*.mjs tests/record-contract.test.mjs tests/event-draft.test.mjs"
   },
   "dependencies": {
     "vue": "3.5.22"
