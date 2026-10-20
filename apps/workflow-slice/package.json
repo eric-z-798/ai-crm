@@ -10,7 +10,8 @@
     "test:ui-api": "node scripts/atomic-local.mjs --ui-check=tests/rep-real-api-dom.test.mjs",
     "test:business-regressions": "node scripts/atomic-local.mjs --ui-check=tests/candidate2-business-regressions.mjs",
     "serve:atomic": "node scripts/atomic-local.mjs --serve",
-    "test:runner": "node --test --test-reporter=tap tests/runner-config.test.mjs"
+    "test:runner": "node --test --test-reporter=tap tests/runner-config.test.mjs",
+    "test:continuity-browser": "node scripts/atomic-local.mjs --ui-check=tests/continuity-browser.mjs"
   },
   "devDependencies": {
     "embedded-postgres": "18.4.0-beta.17",

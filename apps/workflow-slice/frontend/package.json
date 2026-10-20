@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "vue-tsc --noEmit && vite build",
     "test": "npm run test:domain && npm run test:dom",
-    "test:dom": "npm run build && node --test --test-reporter=tap tests/rep-integration-dom.test.mjs",
+    "test:dom": "npm run build && node --test --test-reporter=tap tests/rep-integration-dom.test.mjs tests/continuity-dom.test.mjs",
     "test:real": "node --test --test-reporter=tap tests/rep-real-api-dom.test.mjs",
     "test:domain": "node --test --test-reporter=tap tests/domain-v3/*.mjs tests/record-contract.test.mjs tests/event-draft.test.mjs"
   },

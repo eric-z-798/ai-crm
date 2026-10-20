@@ -9,6 +9,7 @@ This is an un-deployed Java 21 / Spring Boot / Vue 3 / PostgreSQL synthetic work
 - The original communication and declaration text is retained. Unknown occurrence dates and deadlines remain unknown. Organization text is stored with `organizationId: null`; an organization directory is not implemented.
 - Cross-day follow-up separates progress, incoming/outgoing reply facts and completion. New content cannot inherit old verification. Replies explicitly select the relevant content revision and can be recorded after completion without reopening.
 - Event drafts bind their original revision/scope. A changed server version requires explicit comparison before rebinding. Session recovery preserves main and held drafts, original legacy bytes and pending requests. A mutation is not sent until its complete recovery state has been written and read back successfully.
+- Saved communications link to their current personal commitments, including completed ones, and open the exact follow-up/history. A read-only source-communication panel keeps the current event draft unchanged, rejects late or mismatched source results, and returns keyboard focus to its opener. Failed loading is not shown as an empty result.
 - Old v1 server endpoints/rows/receipts remain supported by this paired backend. An old client or binary that requires non-null dates is not guaranteed compatible with new unknown-date records.
 
 ## Install and build
@@ -72,3 +73,18 @@ Demo identities and local trust authentication are synthetic fixtures. Do not ex
 This source was exercised with the ordinary suites described above. Built-bundle JSDOM tests are not real-browser/mobile visual evidence. Real desktop/mobile task and visual acceptance, complete CRM requirements, a real identity provider, organization directory, production migrations/rollback and operations remain pending. No product-internal AI is present. Wider requirements are not reduced to this slice.
 
 The legacy schema fixture has explicit source attribution under `tests/fixtures/`. Build outputs, dependency folders, runtime databases and logs are excluded from version control. Keep business-source changes and acceptance evidence tied to an exact commit; do not deploy merely because author tests pass.
+
+## Record-to-follow-up continuity checks
+
+`npm --prefix frontend test` now also includes 13 targeted built-Vue/JSDOM continuity cases. They exercise same-record links, completed-item history, unchanged event drafts, read failures, late replies, role changes, legacy/invalid associations, language changes and simulated reload. These use a mocked API; do not describe them as browser or database tests.
+
+For the separate native browser check, first install the official Playwright Chromium browser for the pinned frontend dependency, then run:
+
+```sh
+cd frontend && npx playwright install chromium && cd ..
+npm run test:continuity-browser
+```
+
+This uses the existing isolated synthetic PostgreSQL/Java runner and serves the built frontend only at loopback `127.0.0.1:5173`. It refuses an occupied frontend port and closes its own server/browser. The 7 scenario groups cover real one-click record saving, correct source linkage, source read/keyboard return without extra mutations, native same-tab reload, saving the retained progress, completed-item access, and an English 412-pixel viewport. JSON results and internal screenshots are written under the run's `.runtime` directory. Viewport emulation is not a physical-phone test; this does not restart the separately paused 369/390 specialist check.
+
+The current change does not add backend endpoints, schema migrations, real identities, organization-directory integration or AI extraction. P20/P24/P25 are only partially addressed; the complete P01–P62/N01–N12 and 21-group reconstruction, wider visual/accessibility acceptance and production release remain open. Native-browser evidence for this narrow chain does not replace those gates.
