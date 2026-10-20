@@ -1,0 +1,6 @@
+{
+  "src/release-preflight.mjs": "3eaf7946519ca5a88ab108dee4bc07a875461c7ca279127310077f0dbef0657a",
+  "src/release-preflight.test.mjs": "9535dca96be0da51a5229be4bfc7a8160c69bb55561f03f4d6c6c2d7db2f931f",
+  "README.md": "01e8753953d7527cf5e5e5a4931a6734a6208d3c9ad540a79666cd3e5b95b3ce",
+  "example-blocked.json": "b3c06d0be92f3e62f0ba69129dcb20a08d8c0b6ca14414a25555b35888831b10"
+}

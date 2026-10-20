@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "CRM-PREFLIGHT-NEW-20261020-C",
+  "commit": "07d0243c3bdd4491b735af66a4f40ed8d42f2688",
+  "scope": "Local release-evidence preflight tooling only",
+  "author": "/root/recover_crm_candidate",
+  "completeReconstruction": false,
+  "dataClass": "synthetic",
+  "authMode": "demo-local",
+  "target": "loopback-only",
+  "artifacts": [],
+  "gates": {}
+}

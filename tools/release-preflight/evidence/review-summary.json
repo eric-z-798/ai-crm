@@ -1,0 +1,42 @@
+{
+  "release_id": "CRM-PREFLIGHT-NEW-20261020-C",
+  "baseline": "07d0243c3bdd4491b735af66a4f40ed8d42f2688",
+  "manifest": {
+    "src/release-preflight.mjs": "3eaf7946519ca5a88ab108dee4bc07a875461c7ca279127310077f0dbef0657a",
+    "src/release-preflight.test.mjs": "9535dca96be0da51a5229be4bfc7a8160c69bb55561f03f4d6c6c2d7db2f931f",
+    "README.md": "01e8753953d7527cf5e5e5a4931a6734a6208d3c9ad540a79666cd3e5b95b3ce",
+    "example-blocked.json": "b3c06d0be92f3e62f0ba69129dcb20a08d8c0b6ca14414a25555b35888831b10"
+  },
+  "scope": "Offline read-only engineering evidence checker source preservation only. Not full CRM, deployment authorization, or recovery of the missing original.",
+  "author": {
+    "role": "CRM-ARCH",
+    "tests": 59,
+    "checked_at": "2026-10-20T11:24:10+08:00"
+  },
+  "product_review": {
+    "role": "CRM-02",
+    "checked_at": "2026-10-20T11:26:39.406142+08:00",
+    "decision": "LIMITED_PM_ACCEPTANCE_ENGINEERING_TOOL_SAVE_ONLY_QA_SEPARATE"
+  },
+  "independent_qa": {
+    "role": "CRM-10",
+    "checked_at": "2026-10-20T11:32:53+08:00",
+    "decision": "PASS_LIMITED_OFFLINE_TOOL_SOURCE_PERSISTENCE_ONLY",
+    "independently_reproduced": 59,
+    "failed": 0,
+    "additional_checks": {
+      "A_regressions": 4,
+      "CLI_paths": 5,
+      "all_pass": true,
+      "overlap_with_author_tests": true
+    }
+  },
+  "reviewer_independence": "Product and QA reviewers were distinct from each other and the author; declaration checks in the tool do not establish real identity.",
+  "remaining_open": [
+    "只验证声明和本地散列，不认证真实审核身份或证据真伪",
+    "完整P01-P62/N01-N12、业务父链、真实浏览器、产品模型及生产部署仍开放",
+    "不得将结构通过或exit0解释为部署授权",
+    "未执行网络/数据库/服务启动/真实敏感数据测试"
+  ],
+  "history": "A and B retained separately. A identity/calendar/null-output defects and B CLI-output contract defect fixed and independently rechecked in C. No prior acceptance carried forward."
+}

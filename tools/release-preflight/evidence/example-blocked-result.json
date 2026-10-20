@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "CRM-PREFLIGHT-NEW-20261020-C",
+  "commit": "07d0243c3bdd4491b735af66a4f40ed8d42f2688",
+  "scope": "Local release-evidence preflight tooling only",
+  "status": "BLOCKED",
+  "deploymentAuthorized": false,
+  "publicDeploymentSupported": false,
+  "blockers": [
+    "ARTIFACTS_MISSING",
+    "GATE_REQUIREMENTS",
+    "GATE_PRODUCT",
+    "GATE_QA",
+    "GATE_EXPERIENCE",
+    "GATE_OPERATIONS"
+  ],
+  "checks": [],
+  "limitations": [
+    "Checks local bytes and declared metadata only; does not authenticate reviewer identity or validate the substance of evidence.",
+    "Synthetic local baseline only. No network access, service startup, database access, credential handling, or deployment is performed.",
+    "A structurally complete packet is not product acceptance, architecture release approval, or permission to deploy."
+  ]
+}
