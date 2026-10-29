@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,nextTick,onMounted,reactive,ref,watch} from 'vue';
+import {computed,nextTick,onMounted,onBeforeUnmount,reactive,ref,watch} from 'vue';
 import {api,ApiError} from './api';
 import {copy} from './i18n';
 import {followupCopy} from './followup-i18n';
@@ -9,7 +9,7 @@ import {projectCommitment,type Commitment,type CommitmentView} from './domain/co
 type Visit={id:string;revision:number;status:'DRAFT'|'RECORDED';organization:string;occurredOn:string|null;organizationId?:null;notes:string;ownerId:string;createdAt:string;updatedAt:string};
 type Handoff={id:string;visitId:string;revision:number;status:'SENT'|'RECEIVED'|'ACCEPTED';request:string};
 type Pending={key:string;path:string;method:string;body:any;kind:'save'|'confirm'|'handoff'|'receive'|'accept'|'record'|'commitment-event';role:string};
-const lang=ref<'zh'|'en'>('zh'),t=computed(()=>copy[lang.value]),role=ref('rep'),visits=ref<Visit[]>([]),handoffs=ref<Handoff[]>([]),current=ref<Visit|null>(null),editing=ref(false),form=reactive({organization:'',occurredOn:'',notes:''}),request=ref(''),pending=ref<Pending|null>(null),busy=ref(false),loading=ref(false),error=ref(''),notice=ref(''),listError=ref(false),aiOpen=ref(false),latest=ref<Visit|null>(null),localOk=ref(true),composing=ref(false),context=ref<{id:string;role:string;tenant:string}|null>(null),tab=ref('visits');
+const lang=ref<'zh'|'en'>('zh'),t=computed(()=>copy[lang.value]),role=ref('rep'),visits=ref<Visit[]>([]),handoffs=ref<Handoff[]>([]),current=ref<Visit|null>(null),editing=ref(false),form=reactive({organization:'',occurredOn:'',notes:''}),request=ref(''),pending=ref<Pending|null>(null),busy=ref(false),loading=ref(false),error=ref(''),notice=ref<''|'retained'|'success'|'handoffSuccess'|'localSaved'|'localFail'|'review'|'legacy'>(''),listError=ref(false),aiOpen=ref(false),latest=ref<Visit|null>(null),localOk=ref(true),composing=ref(false),context=ref<{id:string;role:string;tenant:string}|null>(null),tab=ref('visits');
 const accessAllowed=ref(false); let accessEpoch=0;
 const storageKey='aicrm-synthetic-slice-v2',legacyStorageKey='aicrm-synthetic-slice-v1';
 const savedReview=ref<any|null>(null),savedReviewLoaded=ref(false);
@@ -51,6 +51,24 @@ const eventDirty=computed(()=>!!eventDraft.commitmentId);
 let legacyImported=false;const recoveryInitializing=ref(true);
 const eventTargetChanged=computed(()=>targetChanged(eventDraft,selectedCommitment.value));
 const replyScopes=computed(()=>contentScopes(selectedCommitment.value));
+// Store system notice meaning, never a translation captured at response time.
+const noticeText=computed(()=>notice.value==='handoffSuccess'?(request.value.trim()?t.value.handoffPreviousSaved:t.value.handoffSaved):notice.value==='localSaved'?ft.value.localSaved:notice.value==='legacy'?ft.value.legacy:notice.value?t.value[notice.value]:'');
+let alive=true,pageActive=true,lookupTimer:ReturnType<typeof setTimeout>|undefined;
+let lookupController:AbortController|undefined,lookupDelay=1000;
+const checkingReceipt=ref(false);
+function clearLookupTimer(){if(lookupTimer!==undefined)clearTimeout(lookupTimer);lookupTimer=undefined;}
+function stopReceiptLookup(){clearLookupTimer();lookupController?.abort();}
+function canLookup(){return alive&&pageActive&&document.visibilityState!=='hidden'&&accessAllowed.value&&!!pending.value&&!recoveryInitializing.value;}
+function samePending(p:Pending,identity:string|undefined){return alive&&accessAllowed.value&&role.value===p.role&&context.value?.id===identity&&pending.value?.key===p.key;}
+function scheduleReceiptLookup(delay=lookupDelay){
+ clearLookupTimer();if(!canLookup())return;
+ lookupTimer=setTimeout(()=>{lookupTimer=undefined;if(!canLookup())return;if(busy.value){scheduleReceiptLookup();return;}void checkResult();},delay);
+}
+watch([()=>pending.value?.key,accessAllowed],()=>{stopReceiptLookup();lookupDelay=1000;if(canLookup())scheduleReceiptLookup(0);},{flush:'sync'});
+function pauseRecovery(){pageActive=false;stopReceiptLookup();}
+function resumeRecovery(){pageActive=true;if(canLookup())scheduleReceiptLookup(0);}
+function visibilityChanged(){if(document.visibilityState==='hidden')pauseRecovery();else resumeRecovery();}
+
 const entryDay=computed(()=>new Intl.DateTimeFormat(lang.value==='zh'?'zh-CN':'en',{dateStyle:'medium'}).format(new Date()));
 
 const recoveryIssue=ref<'preserved'|'blocked'|null>(null);
@@ -138,19 +156,19 @@ const editable=computed(()=>accessAllowed.value&&role.value==='rep'&&current.val
 const statusText=computed(()=>dirty.value?t.value.unsaved:current.value?.status==='RECORDED'?t.value.immutable:current.value?t.value.saved:t.value.fresh);
 const formatTime=(date:unknown)=>validTime(date)?new Intl.DateTimeFormat(lang.value==='zh'?'zh-CN':'en',{dateStyle:'medium',timeStyle:'short'}).format(new Date(date as string)):t.value.timeUnavailable;
 function recoverySnapshot(){return {schemaVersion:3,review:review.value,eventDraft:{...eventDraft},role:role.value,identity:context.value?.id,lang:lang.value,current:current.value,editing:editing.value,form:snapshot(),request:request.value,pending:pending.value,tab:tab.value}}
-function persist():boolean{if(recoveryInitializing.value||!accessAllowed.value)return false;if(!preserveRejectedRecovery())return false;try{const raw=JSON.stringify(recoverySnapshot());sessionStorage.setItem(storageKey,raw);if(sessionStorage.getItem(storageKey)!==raw)throw Error('STORAGE_READBACK_MISMATCH');localOk.value=true;return true}catch{localOk.value=false;return false}}
-function restoreCandidate(s:any){if(!validRecovery(s))return false;if(!accessAllowed.value||!s||s.role!==role.value||s.identity!==context.value?.id||s.current&&!visits.value.some(v=>v.id===s.current.id))return false;current.value=s.current;editing.value=!!s.editing;Object.assign(form,s.form);request.value=s.request??'';pending.value=s.pending;review.value=s.schemaVersion===2||s.schemaVersion===3?s.review:emptyReview();Object.assign(eventDraft,s.schemaVersion===2||s.schemaVersion===3?restoreEventDraft(s.eventDraft):emptyEventDraft());tab.value=s.tab??'visits';notice.value=t.value.retained;return true}
+function persist():boolean{if(!alive||recoveryInitializing.value||!accessAllowed.value)return false;if(!preserveRejectedRecovery())return false;try{const raw=JSON.stringify(recoverySnapshot());sessionStorage.setItem(storageKey,raw);if(sessionStorage.getItem(storageKey)!==raw)throw Error('STORAGE_READBACK_MISMATCH');localOk.value=true;return true}catch{localOk.value=false;return false}}
+function restoreCandidate(s:any){if(!validRecovery(s))return false;if(!accessAllowed.value||!s||s.role!==role.value||s.identity!==context.value?.id||s.current&&!visits.value.some(v=>v.id===s.current.id))return false;current.value=s.current;editing.value=!!s.editing;Object.assign(form,s.form);request.value=s.request??'';pending.value=s.pending;review.value=s.schemaVersion===2||s.schemaVersion===3?s.review:emptyReview();Object.assign(eventDraft,s.schemaVersion===2||s.schemaVersion===3?restoreEventDraft(s.eventDraft):emptyEventDraft());tab.value=s.tab??'visits';notice.value='retained';return true}
 function protectLegacy(raw:string,key:string){try{const target=storageKey+'-legacy-'+key;const previous=sessionStorage.getItem(target);if(previous===null)sessionStorage.setItem(target,raw);else if(previous!==raw)sessionStorage.setItem(target+'-'+Date.now(),raw);}catch{if(!unpreservedRecovery.some(e=>e.key===key&&e.raw===raw))unpreservedRecovery.push({key,raw});recoveryIssue.value='blocked';localOk.value=false;}}
 function restoreQuarantine(){if(recoveryInitializing.value||editing.value||pending.value||dirty.value)return;try{let key=storageKey+'-held-'+role.value;let raw=sessionStorage.getItem(key);if(raw===null){key=legacyStorageKey+'-held-'+role.value;raw=sessionStorage.getItem(key);if(raw!==null)protectLegacy(raw,key);}if(raw!==null)protectLegacy(raw,key);const held=heldInMemory.get(role.value)??(raw?readRecovery(raw,key):null);if(held&&restoreCandidate(held)){heldInMemory.delete(role.value)}}catch{localOk.value=false}}
 watch(()=>selectedCommitment.value?.revision,()=>{eventDraft.scopeReviewed=false;});
 watch([form,current,editing,request,pending,role,lang,tab,review,eventDraft],persist,{deep:true});
 watch([()=>current.value?.id,()=>current.value?.status,accessAllowed],async()=>{savedReview.value=null;savedReviewLoaded.value=false;const id=current.value?.id;if(!id||current.value?.status!=='RECORDED'||!accessAllowed.value)return;try{const result=await api<any>(role.value,`/v2/visits/${id}/review`);if(accessAllowed.value&&current.value?.id===id){if(result.objectType!=='record-review'||result.visitId!==id)throw Error('WRONG_REVIEW_RESULT');savedReview.value=result.followUpReview;savedReviewLoaded.value=true;}}catch(e){if(isAccessError(e))revokeAccess();else if(current.value?.id===id)error.value=explain(e);}});
 watch(lang,()=>{document.documentElement.lang=lang.value==='zh'?'zh-CN':'en';document.title='AICRM · '+t.value.workspace});
-function isolateEditor(){if(dirty.value||request.value.trim()||pending.value){const held=recoverySnapshot();heldInMemory.set(role.value,held);try{sessionStorage.setItem(storageKey+'-held-'+role.value,JSON.stringify(held))}catch{localOk.value=false}}current.value=null;latest.value=null;editing.value=false;pending.value=null;request.value='';Object.assign(form,{organization:'',occurredOn:'',notes:''});review.value=emptyReview();Object.assign(eventDraft,emptyEventDraft());notice.value='';try{sessionStorage.removeItem(storageKey)}catch{localOk.value=false}}
-function revokeAccess(){closeSource(false);if(dirty.value||request.value.trim()||pending.value)heldInMemory.set(role.value,recoverySnapshot());try{if(heldInMemory.has(role.value))sessionStorage.setItem(storageKey+'-held-'+role.value,JSON.stringify(heldInMemory.get(role.value)))}catch{localOk.value=false}accessEpoch++;accessAllowed.value=false;visits.value=[];handoffs.value=[];commitments.value=[];current.value=null;latest.value=null;context.value=null;editing.value=false;pending.value=null;request.value='';Object.assign(form,{organization:'',occurredOn:'',notes:''});review.value=emptyReview();Object.assign(eventDraft,emptyEventDraft());notice.value='';error.value=t.value.accessChanged;try{sessionStorage.removeItem(storageKey)}catch{localOk.value=false}}
+function isolateEditor(){if(!alive)return;if(dirty.value||request.value.trim()||pending.value){const held=recoverySnapshot();heldInMemory.set(role.value,held);try{sessionStorage.setItem(storageKey+'-held-'+role.value,JSON.stringify(held))}catch{localOk.value=false}}current.value=null;latest.value=null;editing.value=false;pending.value=null;request.value='';Object.assign(form,{organization:'',occurredOn:'',notes:''});review.value=emptyReview();Object.assign(eventDraft,emptyEventDraft());notice.value='';try{sessionStorage.removeItem(storageKey)}catch{localOk.value=false}}
+function revokeAccess(){if(!alive)return;closeSource(false);if(dirty.value||request.value.trim()||pending.value)heldInMemory.set(role.value,recoverySnapshot());try{if(heldInMemory.has(role.value))sessionStorage.setItem(storageKey+'-held-'+role.value,JSON.stringify(heldInMemory.get(role.value)))}catch{localOk.value=false}accessEpoch++;accessAllowed.value=false;visits.value=[];handoffs.value=[];commitments.value=[];current.value=null;latest.value=null;context.value=null;editing.value=false;pending.value=null;request.value='';Object.assign(form,{organization:'',occurredOn:'',notes:''});review.value=emptyReview();Object.assign(eventDraft,emptyEventDraft());notice.value='';error.value=t.value.accessChanged;try{sessionStorage.removeItem(storageKey)}catch{localOk.value=false}}
 function isAccessError(e:unknown){return e instanceof ApiError&&(e.status===401||e.status===403)}
 function explain(e:unknown){if(e instanceof ApiError){if(e.status===409)return t.value.conflict; if(e.status===401||e.status===403)return `${t.value.error} (${e.status}: ${e.code})`;return `${t.value.error} (${e.code})`}return t.value.unknown}
-async function load(){closeSource(false);const epoch=++accessEpoch;loading.value=true;listError.value=false;try{const ctx=await api<{id:string;role:string;tenant:string}>(role.value,'/context');const [v,h,c]=await Promise.all([api<Visit[]>(role.value,'/v2/visits'),api<Handoff[]>(role.value,'/handoffs'),role.value==='rep'?api<Commitment[]>(role.value,'/v2/commitments'):Promise.resolve([])]);if(c.some(item=>!projectCommitment(item).ok))throw Error('INVALID_COMMITMENT_RESULT');if(epoch!==accessEpoch)return;const identityChanged=!!context.value&&context.value.id!==ctx.id;const selectedUnavailable=!!current.value&&!v.some(item=>item.id===current.value!.id);if(identityChanged||selectedUnavailable){isolateEditor();error.value=t.value.scopeChanged}if(latest.value&&!v.some(item=>item.id===latest.value!.id))latest.value=null;context.value=ctx;visits.value=v;handoffs.value=h;commitments.value=c;accessAllowed.value=true;restoreQuarantine()}catch(e){if(isAccessError(e))revokeAccess();listError.value=true}finally{loading.value=false;exportStatus.value=null;collectRecoveryCopies()}}
+async function load(){closeSource(false);const epoch=++accessEpoch;loading.value=true;listError.value=false;try{const ctx=await api<{id:string;role:string;tenant:string}>(role.value,'/context');const [v,h,c]=await Promise.all([api<Visit[]>(role.value,'/v2/visits'),api<Handoff[]>(role.value,'/handoffs'),role.value==='rep'?api<Commitment[]>(role.value,'/v2/commitments'):Promise.resolve([])]);if(c.some(item=>!projectCommitment(item).ok))throw Error('INVALID_COMMITMENT_RESULT');if(!alive||epoch!==accessEpoch)return;const identityChanged=!!context.value&&context.value.id!==ctx.id;const selectedUnavailable=!!current.value&&!v.some(item=>item.id===current.value!.id);if(identityChanged||selectedUnavailable){isolateEditor();error.value=t.value.scopeChanged}if(latest.value&&!v.some(item=>item.id===latest.value!.id))latest.value=null;context.value=ctx;visits.value=v;handoffs.value=h;commitments.value=c;accessAllowed.value=true;restoreQuarantine()}catch(e){if(!alive||epoch!==accessEpoch)return;if(isAccessError(e))revokeAccess();listError.value=true}finally{if(alive&&epoch===accessEpoch){loading.value=false;exportStatus.value=null;collectRecoveryCopies()}}}
 function leaveAllowed(){return !pending.value&&!busy.value&&(!(dirty.value||request.value.trim())||window.confirm(t.value.discard))}
 function open(v:Visit){if(!accessAllowed.value||!leaveAllowed())return;review.value=emptyReview();Object.assign(eventDraft,emptyEventDraft());current.value={...v};Object.assign(form,{organization:v.organization,occurredOn:v.occurredOn??'',notes:v.notes});editing.value=true;error.value='';notice.value='';latest.value=null;request.value=''}
 function fresh(){if(!accessAllowed.value||!leaveAllowed())return;review.value=emptyReview();Object.assign(eventDraft,emptyEventDraft());current.value=null;Object.assign(form,{organization:'',occurredOn:'',notes:''});editing.value=true;request.value='';error.value='';notice.value='';latest.value=null;tab.value='visits';nextTick(()=>document.getElementById('organization')?.focus())}
@@ -168,11 +186,18 @@ function updateResult(p:Pending,result:any){
   if(p.kind==='confirm')Object.assign(form,{organization:result.organization,occurredOn:result.occurredOn??'',notes:result.notes});
  }
  if(p.kind==='handoff'&&request.value===p.body.request)request.value='';
- pending.value=null;notice.value=t.value.success;error.value='';latest.value=null;persist();
+ pending.value=null;notice.value=p.kind==='handoff'?'handoffSuccess':'success';error.value='';latest.value=null;persist();
 }
-async function perform(p:Pending){if(!accessAllowed.value)return;if(!persist()){error.value=ft.value.persistRequired;return;}const epoch=accessEpoch;busy.value=true;error.value='';notice.value='';try{const result=await api(p.role,p.path,p.method,p.body,p.key);if(!accessAllowed.value||epoch!==accessEpoch)return;updateResult(p,result);await load()}catch(e){if(isAccessError(e)){revokeAccess();return}error.value=explain(e);if(e instanceof ApiError&&e.status<500){pending.value=null;persist()}}finally{busy.value=false}}
-async function mutate(kind:Pending['kind'],path:string,method:string,body:any){if(!accessAllowed.value||busy.value||pending.value)return;const p={kind,path,method,body,key:crypto.randomUUID(),role:role.value};pending.value=p;if(!persist()){error.value=ft.value.persistRequired;return;}await perform(p)}
-async function save(){if(composing.value)return;if(!['organization','occurredOn','notes'].every(key=>typeof form[key as keyof typeof form]==='string')){error.value=t.value.invalidDraft;return}persist();notice.value=localOk.value?ft.value.localSaved:t.value.localFail;}
+async function perform(p:Pending){
+ if(!alive||!accessAllowed.value||pending.value?.key!==p.key)return;
+ if(!persist()){clearLookupTimer();error.value=ft.value.persistRequired;return;}
+ clearLookupTimer();const identity=context.value?.id;busy.value=true;error.value='';notice.value='';
+ try{const result=await api(p.role,p.path,p.method,p.body,p.key);if(!samePending(p,identity))return;updateResult(p,result);await load();}
+ catch(e){if(!samePending(p,identity))return;if(isAccessError(e)){revokeAccess();return;}error.value=explain(e);if(e instanceof ApiError&&e.status<500){pending.value=null;persist();}}
+ finally{busy.value=false;if(canLookup())scheduleReceiptLookup(0);}
+}
+async function mutate(kind:Pending['kind'],path:string,method:string,body:any){if(!accessAllowed.value||busy.value||pending.value)return;const p={kind,path,method,body,key:crypto.randomUUID(),role:role.value};pending.value=p;if(!persist()){clearLookupTimer();error.value=ft.value.persistRequired;return;}await perform(p)}
+async function save(){if(composing.value)return;if(!['organization','occurredOn','notes'].every(key=>typeof form[key as keyof typeof form]==='string')){error.value=t.value.invalidDraft;return}persist();notice.value=localOk.value?'localSaved':'localFail';}
 async function confirmRecord(){if(!accessAllowed.value||!editable.value||!context.value)return;try{const body=recordCommand(snapshot(),review.value,current.value,context.value.id);await mutate('record','/v2/visits/record','POST',body)}catch{error.value=ft.value.invalid}}
 function addReview(){review.value.rows.push({id:crypto.randomUUID(),kind:'unconfirmed',text:'',confirmed:false,deadlineKind:'unknown',deadlineValue:''});review.value.checked=false;}
 function removeReview(index:number){if(window.confirm(ft.value.removeConfirm)){review.value.rows.splice(index,1);review.value.checked=false}}
@@ -192,9 +217,28 @@ function eventTitle(type:string){return ({created:ft.value.explicit,amended:ft.v
 function verificationLabel(status:string){return status==='verified'?ft.value.verified:status==='in-progress'?ft.value.inProgress:ft.value.notStarted;}
 
 async function sendHandoff(){if(request.value.length>2000){error.value=t.value.requestLengthError;return}if(!current.value||!request.value.trim())return;await mutate('handoff',`/visits/${current.value.id}/handoffs`,'POST',{expectedRevision:current.value.revision,request:request.value})}
-async function checkResult(retryIfMissing=false){if(!accessAllowed.value||!pending.value||busy.value)return;const original=pending.value;busy.value=true;let retry=false;try{const result=await api(original.role,`/commands/${original.key}`);updateResult(original,result);await load()}catch(e){if(isAccessError(e)){revokeAccess();return}if(e instanceof ApiError&&e.status===404){error.value=t.value.notFound;retry=retryIfMissing}else error.value=explain(e)}finally{busy.value=false}if(retry&&accessAllowed.value&&pending.value?.key===original.key)await perform(original)}
+async function checkResult(retryIfMissing=false){
+ if(!canLookup()||busy.value)return;
+ clearLookupTimer();const original=pending.value!,identity=context.value?.id,controller=new AbortController();
+ lookupController=controller;checkingReceipt.value=true;busy.value=true;let retry=false;
+ try{
+  const result=await api(original.role,`/commands/${original.key}`,'GET',undefined,undefined,controller.signal);
+  if(controller.signal.aborted||!samePending(original,identity))return;
+  updateResult(original,result);await load();
+ }catch(e){
+  if(controller.signal.aborted||!samePending(original,identity))return;
+  if(isAccessError(e)){revokeAccess();return;}
+  if(e instanceof ApiError&&e.status===404){error.value=t.value.notFound;retry=retryIfMissing;}else error.value=explain(e);
+ }finally{
+  if(lookupController===controller)lookupController=undefined;
+  checkingReceipt.value=false;busy.value=false;
+  if(!retry&&canLookup()){scheduleReceiptLookup();lookupDelay=Math.min(lookupDelay*2,10000);}
+ }
+ // Only an explicit user retry may write, and it reuses the complete original command.
+ if(retry&&!controller.signal.aborted&&samePending(original,identity)&&pageActive)await perform(original);
+}
 async function showLatest(){if(!current.value||!accessAllowed.value)return;const epoch=accessEpoch;busy.value=true;try{const all=await api<Visit[]>(role.value,'/v2/visits');if(!accessAllowed.value||epoch!==accessEpoch)return;latest.value=all.find(v=>v.id===current.value!.id)??null;visits.value=all;if(!latest.value){isolateEditor();error.value=t.value.scopeChanged}}catch(e){if(isAccessError(e))revokeAccess();else error.value=explain(e)}finally{busy.value=false}}
-function rebase(){if(!latest.value)return;if(latest.value.status==='RECORDED'){error.value=t.value.serverRecorded;return}current.value=latest.value;latest.value=null;error.value='';notice.value=t.value.review}
+function rebase(){if(!latest.value)return;if(latest.value.status==='RECORDED'){error.value=t.value.serverRecorded;return}current.value=latest.value;latest.value=null;error.value='';notice.value='review'}
 function changeLanguage(){if(composing.value)return;const focused=document.activeElement as HTMLElement;lang.value=lang.value==='zh'?'en':'zh';nextTick(()=>focused?.focus())}
 onMounted(async()=>{
  let recovered:any=null;
@@ -205,16 +249,22 @@ onMounted(async()=>{
   if(raw!==null){protectLegacy(raw,sourceKey);recovered=readRecovery(raw,sourceKey);if(recovered){role.value=recovered.role;lang.value=recovered.lang;}}
  }catch{localOk.value=false;}
  await load();
+ if(!alive)return;
  let restored=false;
  if(accessAllowed.value&&recovered)restored=restoreCandidate(recovered);
  // Main recovery has priority. Other held originals remain separately available; startup cannot consume them first.
  recoveryInitializing.value=false;
  if(accessAllowed.value&&!restored)restoreQuarantine();
- if(legacyImported&&restored)notice.value=ft.value.legacy;
+ if(legacyImported&&restored)notice.value='legacy';
  if(accessAllowed.value)persist();
  if(accessAllowed.value&&pending.value)await checkResult();
 });
-window.addEventListener('beforeunload',e=>{if(dirty.value||pending.value||request.value.trim()){e.preventDefault();e.returnValue=''}});
+function beforeUnload(e:BeforeUnloadEvent){if(dirty.value||pending.value||request.value.trim()){e.preventDefault();e.returnValue=''}}
+window.addEventListener('beforeunload',beforeUnload);
+window.addEventListener('pagehide',pauseRecovery);
+window.addEventListener('pageshow',resumeRecovery);
+document.addEventListener('visibilitychange',visibilityChanged);
+onBeforeUnmount(()=>{alive=false;stopReceiptLookup();closeSource(false);window.removeEventListener('beforeunload',beforeUnload);window.removeEventListener('pagehide',pauseRecovery);window.removeEventListener('pageshow',resumeRecovery);document.removeEventListener('visibilitychange',visibilityChanged);});
 </script>
 
 <template>
@@ -231,9 +281,9 @@ window.addEventListener('beforeunload',e=>{if(dirty.value||pending.value||reques
  </section>
  <div v-if="!localOk&&!recoveryIssue"  class="alert warning" role="alert">{{t.localFail}}</div>
  <div v-if="listError" class="alert error" role="alert">{{t.listError}} <button @click="load" :disabled="loading">{{t.refresh}}</button></div>
- <div v-if="notice" class="alert success" role="status">{{notice}}</div>
+ <div v-if="noticeText" class="alert success" role="status">{{noticeText}}</div>
  <div v-if="error" class="alert error" role="alert">{{error}}<button v-if="current&&!pending" @click="showLatest" :disabled="busy">{{t.loadLatest}}</button></div>
- <div v-if="pending" class="alert warning" role="status"><strong>{{t.pending}}</strong><p>{{t.unknown}}</p><div class="button-row"><button :disabled="busy" @click="checkResult()">{{t.check}}</button><button :disabled="busy" @click="checkResult(true)">{{t.retry}}</button></div></div>
+ <div v-if="pending" class="alert warning" role="status"><strong>{{t.pending}}</strong><p role="status">{{checkingReceipt?t.checking:busy?t.busy:t.autoChecking}}</p><div class="button-row"><button :disabled="busy" @click="checkResult()">{{t.check}}</button><button :disabled="busy" @click="checkResult(true)">{{t.retry}}</button></div></div>
  <div v-if="loading" class="loading" role="status">{{t.loading}}</div>
  <section v-if="accessAllowed&&tab==='visits'" class="work-grid">
  <div class="record-list panel"><div class="panel-heading"><h2>{{t.visits}}</h2><button class="icon-button" :disabled="loading" @click="load" :aria-label="t.refresh">↻</button></div><div v-if="!visits.length&&!loading&&!listError" class="empty"><div class="empty-icon" aria-hidden="true">▤</div><h3>{{t.empty}}</h3><p>{{t.emptyHint}}</p></div><button v-for="v in visits" :key="v.id" class="record-item" :class="{selected:current?.id===v.id}" @click="open(v)" :disabled="busy||!!pending"><span class="record-item-top"><strong>{{v.organization}}</strong><span class="badge" :class="v.status.toLowerCase()">{{t[v.status]}}</span></span><span class="record-preview">{{v.notes}}</span><span class="record-meta">{{v.occurredOn||ft.unknown}} · {{t.revision}} {{v.revision}}</span></button></div>
@@ -248,7 +298,7 @@ window.addEventListener('beforeunload',e=>{if(dirty.value||pending.value||reques
  <section v-if="current?.status==='RECORDED'&&savedReviewLoaded" class="followup-review"><h3>{{ft.savedReview}}</h3><p v-if="savedReview===null">{{ft.legacyUnreviewed}}</p><p v-else-if="!savedReview.decisions.length">{{ft.noCommitments}}</p><article v-else v-for="(decision,index) in savedReview.decisions" :key="index"><strong>{{decision.kind==='explicit-self-commitment'?ft.explicit:decision.kind==='customer-request'?ft.request:decision.kind==='unconfirmed'?ft.unconfirmed:ft.noCommitments}}</strong><p class="preserve-text">{{decision.commitmentText??decision.requestText??decision.candidateText??''}}</p><p v-if="decision.deadline">{{ft.deadline}}: {{decision.deadline.kind==='unknown'?ft.unknown:decision.deadline.date??decision.deadline.at}}</p></article></section>
  <section v-if="current?.status==='RECORDED'&&role==='rep'" class="related-commitments followup-review" aria-labelledby="related-title"><h3 id="related-title">{{ft.relatedTitle}}</h3><p class="field-hint">{{ft.relatedHint}}</p><p v-if="loading" role="status">{{ft.relatedLoading}}</p><p v-else-if="listError" role="alert">{{ft.relatedFailed}}</p><template v-else><p v-if="!relatedCommitments.length">{{savedReviewLoaded&&savedReview!==null?ft.relatedEmpty:ft.relatedUnknown}}</p><article v-for="c in relatedCommitments" :key="c.id" class="related-commitment"><h4 class="preserve-text">{{c.commitmentText}}</h4><p>{{ft.owner}}: {{ft.me}} · {{c.completionStatus==='completed'?ft.completed:ft.open}}</p><p>{{ft.deadline}}: {{c.deadline.kind==='unknown'?ft.unknown:c.deadline.kind==='date'?c.deadline.date:c.deadline.at}}</p><p>{{ft.progress}}: {{verificationLabel(c.verificationStatus)}} · {{ft.toCustomer}}: {{c.replyToCustomer==='recorded'?ft.recorded:ft.notRecorded}} · {{ft.fromCustomer}}: {{c.replyFromCustomer==='recorded'?ft.recorded:ft.notRecorded}}</p><button type="button" :data-related-id="c.id" :disabled="busy||!!pending" @click="continueRelated(c.id)">{{ft.continueRelated}}</button></article></template></section>
  <dl v-if="current" class="time-meta"><div><dt>{{t.created}}</dt><dd>{{formatTime(current.createdAt)}}</dd></div><div><dt>{{t.updated}}</dt><dd>{{formatTime(current.updatedAt)}}</dd></div><small>{{t.timeZone}}</small></dl>
- <section v-if="current?.status==='RECORDED'&&role==='rep'" class="handoff-form"><h3>{{t.optional}}</h3><p>{{t.optionalHint}}</p><p class="target">{{t.manager}} · manager-a · {{t.synthetic}}</p><label for="request">{{t.request}}<textarea id="request" v-model="request" rows="3" maxlength="2000"></textarea></label><p class="field-hint">{{t.requestLimit}}</p><button :disabled="!request.trim()||busy||!!pending" @click="sendHandoff">{{t.send}}</button><div v-for="h in handoffs.filter(h=>h.visitId===current?.id)" :key="h.id" class="handoff-receipt"><span class="badge">{{t[h.status]}}</span><p>{{h.request}}</p></div></section>
+ <section v-if="current?.status==='RECORDED'&&role==='rep'" class="handoff-form"><h3>{{t.optional}}</h3><p>{{t.optionalHint}}</p><p class="target">{{t.manager}} · manager-a · {{t.synthetic}}</p><label for="request">{{t.request}}<textarea id="request" v-model="request" rows="3" maxlength="2000"></textarea></label><p class="field-hint">{{t.requestLimit}}</p><p v-if="request.trim()&&!pending" class="field-hint" role="status">{{t.handoffDraft}}</p><button :disabled="!request.trim()||busy||!!pending" @click="sendHandoff">{{t.send}}</button><div v-for="h in handoffs.filter(h=>h.visitId===current?.id)" :key="h.id" class="handoff-receipt"><span class="badge">{{t[h.status]}}</span><p>{{h.request}}</p></div></section>
  </template></article></section>
  <section v-else-if="accessAllowed&&tab==='handoffs'" class="handoff-list panel"><div class="panel-heading"><h2>{{t.handoffs}}</h2><button @click="load" :disabled="loading">{{t.refresh}}</button></div><div v-if="!handoffs.length&&!loading&&!listError" class="empty"><h3>{{t.handoffEmpty}}</h3><p>{{t.managerSub}}</p></div><article v-for="h in handoffs" :key="h.id" class="handoff-card"><div class="panel-heading"><h3>{{visits.find(v=>v.id===h.visitId)?.organization||t.record}}</h3><span class="badge" :class="h.status.toLowerCase()">{{t[h.status]}}</span></div><p class="preserve-text">{{h.request}}</p><p class="field-hint">{{t.revision}} {{h.revision}} · {{t.manager}} manager-a</p><div v-if="role==='manager'" class="button-row"><button v-if="h.status==='SENT'" class="primary" :disabled="busy||!!pending" @click="mutate('receive',`/handoffs/${h.id}/receive`,'POST',{expectedRevision:h.revision})">{{t.receive}}</button><button v-if="h.status==='RECEIVED'" class="primary" :disabled="busy||!!pending" @click="mutate('accept',`/handoffs/${h.id}/accept`,'POST',{expectedRevision:h.revision})">{{t.accept}}</button></div></article></section>
  <section v-if="accessAllowed&&role==='rep'&&tab==='commitments'" class="commitment-list panel"><div class="panel-heading"><div><h2>{{ft.list}}</h2><p>{{ft.listHint}}</p></div><button :disabled="loading" @click="load">{{t.refresh}}</button></div><label class="check-label"><input type="checkbox" v-model="showCompleted">{{ft.showCompleted}}</label><p v-if="loading" role="status" data-list-state="loading">{{ft.listLoading}}</p><p v-else-if="listError" role="alert" data-list-state="failed">{{ft.listFailed}}</p><p v-else-if="!visibleCommitments.length" data-list-state="empty">{{showCompleted?ft.emptyAll:ft.empty}}</p>
