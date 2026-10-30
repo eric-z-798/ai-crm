@@ -124,7 +124,12 @@ await scenario('failed persistence shows idle lookup in both languages and prese
   const before=a.state.calls.length;await record(a);await a.tick();
   assert.equal(a.state.calls.length,before);assert(a.text().includes('当前未自动查回。'));
   assert(!a.text().includes('正在自动查回原请求。'));
+  assert(a.text().includes('尚未发送：无法可靠保存原稿与请求编号。'));
   await a.click('English');assert(a.text().includes('Automatic checking is not active.'));
+  assert(a.text().includes('Not sent: the draft and request ID could not be saved reliably.'));
+  assert(!a.text().includes('尚未发送：无法可靠保存原稿与请求编号。'));
+  await a.click('简体中文');assert(a.text().includes('尚未发送：无法可靠保存原稿与请求编号。'));
+  await a.click('English');
   assert.equal(a.state.calls.length,before);
   storage.setItem=setItem;await a.click('Retry original request');
   assert.equal(a.state.visits.length,1);assert.equal(a.state.commitments.length,1);
