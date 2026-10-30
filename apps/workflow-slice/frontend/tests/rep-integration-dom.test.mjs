@@ -116,3 +116,21 @@ await scenario('unmounted instance cannot erase replacement recovery after delay
   const calls=a.state.calls.length;a.w.dispatchEvent(new a.w.Event('pageshow'));await a.tick();assert.equal(a.state.calls.length,calls,'unmounted listeners removed');
  }finally{release(401);a.close()}
 });
+
+await scenario('failed persistence shows idle lookup in both languages and preserves explicit recovery',async()=>{
+ const a=await boot();try{
+  await fresh(a);await promise(a);const storage=a.w.sessionStorage,setItem=storage.setItem;
+  storage.setItem=(key,value)=>{if(key===v2)throw Error('synthetic quota');setItem(key,value)};
+  const before=a.state.calls.length;await record(a);await a.tick();
+  assert.equal(a.state.calls.length,before);assert(a.text().includes('当前未自动查回。'));
+  assert(!a.text().includes('正在自动查回原请求。'));
+  await a.click('English');assert(a.text().includes('Automatic checking is not active.'));
+  assert.equal(a.state.calls.length,before);
+  storage.setItem=setItem;await a.click('Retry original request');
+  assert.equal(a.state.visits.length,1);assert.equal(a.state.commitments.length,1);
+  assert.equal(a.state.calls.filter(c=>c.method==='POST').length,1);
+  const lookup=a.state.calls.find(c=>c.path.startsWith('/commands/'));
+  assert.equal(lookup.path,'/commands/'+a.state.calls.find(c=>c.method==='POST').key);
+  assert(!a.text().includes('Automatic checking is not active.'));
+ }finally{a.close()}
+});

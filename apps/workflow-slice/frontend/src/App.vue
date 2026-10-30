@@ -55,14 +55,15 @@ const replyScopes=computed(()=>contentScopes(selectedCommitment.value));
 const noticeText=computed(()=>notice.value==='handoffSuccess'?(request.value.trim()?t.value.handoffPreviousSaved:t.value.handoffSaved):notice.value==='localSaved'?ft.value.localSaved:notice.value==='legacy'?ft.value.legacy:notice.value?t.value[notice.value]:'');
 let alive=true,pageActive=true,lookupTimer:ReturnType<typeof setTimeout>|undefined;
 let lookupController:AbortController|undefined,lookupDelay=1000;
-const checkingReceipt=ref(false);
-function clearLookupTimer(){if(lookupTimer!==undefined)clearTimeout(lookupTimer);lookupTimer=undefined;}
+const checkingReceipt=ref(false),receiptLookupScheduled=ref(false);
+function clearLookupTimer(){if(lookupTimer!==undefined)clearTimeout(lookupTimer);lookupTimer=undefined;receiptLookupScheduled.value=false;}
 function stopReceiptLookup(){clearLookupTimer();lookupController?.abort();}
 function canLookup(){return alive&&pageActive&&document.visibilityState!=='hidden'&&accessAllowed.value&&!!pending.value&&!recoveryInitializing.value;}
 function samePending(p:Pending,identity:string|undefined){return alive&&accessAllowed.value&&role.value===p.role&&context.value?.id===identity&&pending.value?.key===p.key;}
 function scheduleReceiptLookup(delay=lookupDelay){
  clearLookupTimer();if(!canLookup())return;
- lookupTimer=setTimeout(()=>{lookupTimer=undefined;if(!canLookup())return;if(busy.value){scheduleReceiptLookup();return;}void checkResult();},delay);
+ receiptLookupScheduled.value=true;
+ lookupTimer=setTimeout(()=>{lookupTimer=undefined;receiptLookupScheduled.value=false;if(!canLookup())return;if(busy.value){scheduleReceiptLookup();return;}void checkResult();},delay);
 }
 watch([()=>pending.value?.key,accessAllowed],()=>{stopReceiptLookup();lookupDelay=1000;if(canLookup())scheduleReceiptLookup(0);},{flush:'sync'});
 function pauseRecovery(){pageActive=false;stopReceiptLookup();}
@@ -283,7 +284,7 @@ onBeforeUnmount(()=>{alive=false;stopReceiptLookup();closeSource(false);window.r
  <div v-if="listError" class="alert error" role="alert">{{t.listError}} <button @click="load" :disabled="loading">{{t.refresh}}</button></div>
  <div v-if="noticeText" class="alert success" role="status">{{noticeText}}</div>
  <div v-if="error" class="alert error" role="alert">{{error}}<button v-if="current&&!pending" @click="showLatest" :disabled="busy">{{t.loadLatest}}</button></div>
- <div v-if="pending" class="alert warning" role="status"><strong>{{t.pending}}</strong><p role="status">{{checkingReceipt?t.checking:busy?t.busy:t.autoChecking}}</p><div class="button-row"><button :disabled="busy" @click="checkResult()">{{t.check}}</button><button :disabled="busy" @click="checkResult(true)">{{t.retry}}</button></div></div>
+ <div v-if="pending" class="alert warning" role="status"><strong>{{t.pending}}</strong><p role="status">{{checkingReceipt?t.checking:busy?t.busy:receiptLookupScheduled?t.autoChecking:t.lookupIdle}}</p><div class="button-row"><button :disabled="busy" @click="checkResult()">{{t.check}}</button><button :disabled="busy" @click="checkResult(true)">{{t.retry}}</button></div></div>
  <div v-if="loading" class="loading" role="status">{{t.loading}}</div>
  <section v-if="accessAllowed&&tab==='visits'" class="work-grid">
  <div class="record-list panel"><div class="panel-heading"><h2>{{t.visits}}</h2><button class="icon-button" :disabled="loading" @click="load" :aria-label="t.refresh">↻</button></div><div v-if="!visits.length&&!loading&&!listError" class="empty"><div class="empty-icon" aria-hidden="true">▤</div><h3>{{t.empty}}</h3><p>{{t.emptyHint}}</p></div><button v-for="v in visits" :key="v.id" class="record-item" :class="{selected:current?.id===v.id}" @click="open(v)" :disabled="busy||!!pending"><span class="record-item-top"><strong>{{v.organization}}</strong><span class="badge" :class="v.status.toLowerCase()">{{t[v.status]}}</span></span><span class="record-preview">{{v.notes}}</span><span class="record-meta">{{v.occurredOn||ft.unknown}} · {{t.revision}} {{v.revision}}</span></button></div>
