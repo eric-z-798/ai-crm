@@ -10,7 +10,8 @@ import {projectCommitment,type Commitment,type CommitmentView} from './domain/co
 type Visit={id:string;revision:number;status:'DRAFT'|'RECORDED';organization:string;occurredOn:string|null;organizationId?:null;notes:string;ownerId:string;createdAt:string;updatedAt:string};
 type Handoff={id:string;visitId:string;revision:number;status:'SENT'|'RECEIVED'|'ACCEPTED';request:string};
 type Pending={key:string;path:string;method:string;body:any;kind:'save'|'confirm'|'handoff'|'receive'|'accept'|'record'|'commitment-event';role:string};
-type ErrorState={source:'ui';key:keyof typeof copy.zh;detail?:string}|{source:'followup';key:keyof typeof followupCopy.zh};
+type RecoveryTarget={kind:'commitment'|'visit';id:string};
+type ErrorState=({source:'ui';key:keyof typeof copy.zh;detail?:string}|{source:'followup';key:keyof typeof followupCopy.zh})&{recoveryTarget?:RecoveryTarget};
 const lang=ref<'zh'|'en'>('zh'),t=computed(()=>copy[lang.value]),role=ref('rep'),visits=ref<Visit[]>([]),handoffs=ref<Handoff[]>([]),current=ref<Visit|null>(null),editing=ref(false),form=reactive({organization:'',occurredOn:'',notes:''}),request=ref(''),pending=ref<Pending|null>(null),busy=ref(false),loading=ref(false),error=ref<ErrorState|null>(null),notice=ref<''|'retained'|'success'|'handoffSuccess'|'localSaved'|'localFail'|'review'|'legacy'>(''),listError=ref(false),aiOpen=ref(false),latest=ref<Visit|null>(null),localOk=ref(true),composing=ref(false),context=ref<{id:string;role:string;tenant:string}|null>(null),tab=ref('visits');
 const accessAllowed=ref(false); let accessEpoch=0;
 const storageKey='aicrm-synthetic-slice-v2',legacyStorageKey='aicrm-synthetic-slice-v1';
@@ -198,7 +199,7 @@ async function perform(p:Pending){
  if(!persist()){clearLookupTimer();error.value={source:'followup',key:'persistRequired'};return;}
  clearLookupTimer();const identity=context.value?.id;busy.value=true;error.value=null;notice.value='';
  try{const result=await api(p.role,p.path,p.method,p.body,p.key);if(!samePending(p,identity))return;updateResult(p,result);await load();}
- catch(e){if(!samePending(p,identity))return;if(isAccessError(e)){revokeAccess();return;}error.value=explain(e);if(e instanceof ApiError&&e.status<500){pending.value=null;persist();}}
+ catch(e){if(!samePending(p,identity))return;if(isAccessError(e)){revokeAccess();return;}error.value=explain(e);if(e instanceof ApiError&&e.status===409){const match=p.path.match(/^\/v2\/commitments\/([^/]+)\/events$/);if(p.kind==='commitment-event'&&match)error.value.recoveryTarget={kind:'commitment',id:decodeURIComponent(match[1]!)};else if(current.value)error.value.recoveryTarget={kind:'visit',id:current.value.id};}if(e instanceof ApiError&&e.status<500){pending.value=null;persist();}}
  finally{busy.value=false;if(canLookup())scheduleReceiptLookup(0);}
 }
 async function mutate(kind:Pending['kind'],path:string,method:string,body:any){if(!accessAllowed.value||busy.value||pending.value)return;const p={kind,path,method,body,key:crypto.randomUUID(),role:role.value};pending.value=p;if(!persist()){clearLookupTimer();error.value={source:'followup',key:'persistRequired'};return;}await perform(p)}
@@ -246,7 +247,32 @@ async function checkResult(retryIfMissing=false){
  // Only an explicit user retry may write, and it reuses the complete original command.
  if(retry&&!controller.signal.aborted&&samePending(original,identity)&&pageActive)await perform(original);
 }
-async function showLatest(){if(!current.value||!accessAllowed.value)return;const epoch=accessEpoch;busy.value=true;try{const all=await api<Visit[]>(role.value,'/v2/visits');if(!accessAllowed.value||epoch!==accessEpoch)return;latest.value=all.find(v=>v.id===current.value!.id)??null;visits.value=all;if(!latest.value){isolateEditor();error.value={source:'ui',key:'scopeChanged'}}}catch(e){if(isAccessError(e))revokeAccess();else error.value=explain(e)}finally{busy.value=false}}
+async function showLatest(){
+ const failure=error.value,target=failure?.recoveryTarget??(current.value?{kind:'visit' as const,id:current.value.id}:null);
+ if(!target||!accessAllowed.value||busy.value||pending.value)return;
+ const epoch=accessEpoch,identity=context.value?.id;
+ const stillCurrent=()=>alive&&accessAllowed.value&&epoch===accessEpoch&&context.value?.id===identity&&error.value===failure&&(target.kind==='commitment'?eventDraft.commitmentId===target.id:current.value?.id===target.id);
+ busy.value=true;
+ try{
+  if(target.kind==='commitment'){
+   const all=await api<Commitment[]>(role.value,'/v2/commitments');
+   if(!stillCurrent())return;
+   const value=all.find(c=>c.id===target.id),projected=value&&projectCommitment(value);
+   if(!projected?.ok||projected.value.ownerId!==identity){error.value={source:'ui',key:'scopeChanged',recoveryTarget:target};return;}
+   // Refresh only the server projection. The draft and its old binding stay intact
+   // until the user explicitly compares and rebinds through the existing controls.
+   const index=commitments.value.findIndex(c=>c.id===target.id);
+   if(index<0)commitments.value.push(value!);else commitments.value[index]=value!;
+   latest.value=null;
+  }else{
+   const all=await api<Visit[]>(role.value,'/v2/visits');
+   if(!stillCurrent())return;
+   latest.value=all.find(v=>v.id===target.id)??null;visits.value=all;
+   if(!latest.value){isolateEditor();error.value={source:'ui',key:'scopeChanged'}}
+  }
+ }catch(e){if(!stillCurrent())return;if(isAccessError(e))revokeAccess();else error.value={...explain(e),recoveryTarget:target};}
+ finally{busy.value=false}
+}
 function rebase(){if(!latest.value)return;if(latest.value.status==='RECORDED'){error.value={source:'ui',key:'serverRecorded'};return}current.value=latest.value;latest.value=null;error.value=null;notice.value='review'}
 function changeLanguage(){if(composing.value)return;const focused=document.activeElement as HTMLElement;lang.value=lang.value==='zh'?'en':'zh';nextTick(()=>focused?.focus())}
 onMounted(async()=>{
@@ -291,7 +317,7 @@ onBeforeUnmount(()=>{alive=false;stopReceiptLookup();closeSource(false);window.r
  <div v-if="!localOk&&!recoveryIssue"  class="alert warning" role="alert">{{t.localFail}}</div>
  <div v-if="listError" class="alert error" role="alert">{{t.listError}} <button @click="load" :disabled="loading">{{t.refresh}}</button></div>
  <div v-if="noticeText" class="alert success" role="status">{{noticeText}}</div>
- <div v-if="errorText" class="alert error" role="alert">{{errorText}}<button v-if="current&&!pending" @click="showLatest" :disabled="busy">{{t.loadLatest}}</button></div>
+ <div v-if="errorText" class="alert error" role="alert">{{errorText}}<button v-if="(error?.recoveryTarget||current)&&!pending" @click="showLatest" :disabled="busy">{{t.loadLatest}}</button></div>
  <div v-if="pending" class="alert warning" role="status"><strong>{{t.pending}}</strong><p role="status">{{checkingReceipt?t.checking:busy?t.busy:receiptLookupScheduled?t.autoChecking:t.lookupIdle}}</p><div class="button-row"><button :disabled="busy" @click="checkResult()">{{t.check}}</button><button :disabled="busy" @click="checkResult(true)">{{t.retry}}</button></div></div>
  <div v-if="loading" class="loading" role="status">{{t.loading}}</div>
  <section v-if="accessAllowed&&tab==='visits'" class="work-grid">
