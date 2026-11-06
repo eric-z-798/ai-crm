@@ -66,3 +66,15 @@ CREATE TABLE IF NOT EXISTS handoff_result_events (
  revision integer NOT NULL CHECK(revision>0), document jsonb NOT NULL,
  recorded_at timestamptz NOT NULL DEFAULT now(), UNIQUE(handoff_id,revision)
 );
+
+-- Independent preparation: no source business rows or historical snapshots are rewritten.
+CREATE TABLE IF NOT EXISTS preparations (
+ id text PRIMARY KEY, tenant text NOT NULL, team text NOT NULL,
+ owner_id text NOT NULL REFERENCES actors(id), commitment_id text NOT NULL UNIQUE REFERENCES commitments(id),
+ revision integer NOT NULL CHECK(revision>0), document jsonb NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS preparation_history (
+ preparation_id text NOT NULL REFERENCES preparations(id), revision integer NOT NULL CHECK(revision>0),
+ snapshot jsonb NOT NULL, captured_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(preparation_id,revision)
+);

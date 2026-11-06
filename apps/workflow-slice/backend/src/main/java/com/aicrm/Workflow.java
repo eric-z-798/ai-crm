@@ -83,7 +83,7 @@ public class Workflow {
     }
     void commandRole(Actor a,String route) {
         String action=route==null?"":route.split("/",2)[0];
-        if(Set.of("create","update","confirm","handoff","record-v2","commitment-event","correct-visit").contains(action))require(a.role.equals("REP"),403,"FORBIDDEN");
+        if(Set.of("create","update","confirm","handoff","record-v2","commitment-event","correct-visit","preparation-create","preparation-update").contains(action))require(a.role.equals("REP"),403,"FORBIDDEN");
         else if(action.equals("handoff-event"))require(Set.of("REP","MANAGER").contains(a.role),403,"FORBIDDEN");
         else if(Set.of("receive","accept").contains(action))require(a.role.equals("MANAGER"),403,"FORBIDDEN");
         else throw new Problem(403,"COMMAND_SCOPE_UNKNOWN");
@@ -106,11 +106,14 @@ public class Workflow {
             for(Object c:(List<?>)r.get("commitments")){var m=CommitmentDomain.object(c);commitment(a,CommitmentDomain.id(m.get("id")),false);}
         } else if(action.equals("commitment-event")) {
             require("self-commitment".equals(r.get("kind")) && r.get("id") instanceof String,403,"COMMAND_SCOPE_UNKNOWN");commitment(a,(String)r.get("id"),false);
+        } else if(action.equals("preparation-create")||action.equals("preparation-update")) {
+            require("commitment-preparation".equals(r.get("objectType"))&&r.get("id") instanceof String&&r.get("commitmentId") instanceof String,403,"COMMAND_SCOPE_UNKNOWN");
+            var current=preparation(a,(String)r.get("commitmentId"),false);require(current!=null&&current.get("id").equals(r.get("id")),404,"NOT_FOUND");preparationSource(a,(String)r.get("commitmentId"),false);
         } else throw new Problem(403,"COMMAND_SCOPE_UNKNOWN");
     }
     Object command(String auth,String key,String route,Map<String,Object> body,Function<Actor,Object> work) {
         key(key);
-        boolean versioned=route.startsWith("record-v2") || route.startsWith("commitment-event/") || route.startsWith("handoff-event/");
+        boolean versioned=route.startsWith("record-v2") || route.startsWith("commitment-event/") || route.startsWith("handoff-event/") || route.startsWith("preparation-");
         Object hashBody=versioned?CommitmentDomain.canonical(body):new TreeMap<>(body);
         var envelope=new LinkedHashMap<String,Object>();envelope.put("route",route);envelope.put("body",hashBody);String hash=digest(envelope);
         // Original v1 used Map.of, whose top-level key iteration order can change after a JVM restart.
@@ -190,8 +193,8 @@ public class Workflow {
             event(a,key,id,"HANDOFF_"+next,rev+1);return publicHandoff(handoff(a,id,false));
         });
     }
-    @GetMapping("/commands/{commandKey}") Object receipt(@RequestHeader(value="Authorization",required=false) String auth,@PathVariable String commandKey) {
-        key(commandKey);return tx.execute(s->{Actor a=actor(auth);var rows=db.queryForList("SELECT response::text,command_type FROM command_receipts WHERE tenant=? AND actor_id=? AND command_key=?",a.tenant,a.id,commandKey);require(rows.size()==1,404,"NOT_FOUND");commandRole(a,(String)rows.getFirst().get("command_type")); Object result=decode((String)rows.getFirst().get("response")); reauthorizeResult(a,result,(String)rows.getFirst().get("command_type")); return result;});
+    @GetMapping("/commands/{commandKey}") Object receipt(@RequestHeader(value="Authorization",required=false) String auth,@PathVariable String commandKey,@RequestHeader(value="X-AICRM-Preparation-Contract",required=false) String preparationContract) {
+        key(commandKey);return tx.execute(s->{Actor a=actor(auth);var rows=db.queryForList("SELECT response::text,command_type FROM command_receipts WHERE tenant=? AND actor_id=? AND command_key=?",a.tenant,a.id,commandKey);require(rows.size()==1,404,"NOT_FOUND");if(((String)rows.getFirst().get("command_type")).startsWith("preparation-"))require("preparation-1".equals(preparationContract),426,"CLIENT_UPGRADE_REQUIRED");commandRole(a,(String)rows.getFirst().get("command_type")); Object result=decode((String)rows.getFirst().get("response")); reauthorizeResult(a,result,(String)rows.getFirst().get("command_type")); return result;});
     }
     Map<String,Object> publicVisitV2(Map<String,Object> row) {
         var result=publicVisit(row);result.put("organizationId",null);return result;
@@ -341,6 +344,41 @@ public class Workflow {
         });
     }
     @ExceptionHandler(HandoffResults.Problem.class) ResponseEntity<?> handoffResultError(HandoffResults.Problem e) {return ResponseEntity.status(e.status).body(Map.of("code",e.code,"message",e.code));}
+    Map<String,Object> preparation(Actor a,String cid,boolean lock) {
+        require(a.role.equals("REP"),403,"FORBIDDEN");
+        var rows=db.queryForList("SELECT document::text FROM preparations WHERE commitment_id=? AND tenant=? AND team=? AND owner_id=?"+(lock?" FOR UPDATE":""),cid,a.tenant,a.team,a.id);
+        return rows.isEmpty()?null:CommitmentDomain.object(decode((String)rows.getFirst().get("document")));
+    }
+    Map<String,Object> preparationSource(Actor a,String cid,boolean lock) {
+        require(a.role.equals("REP"),403,"FORBIDDEN");var preliminary=commitment(a,cid,false);String vid=(String)CommitmentDomain.object(preliminary.get("source")).get("visitId");
+        // Universal multi-object order: visit -> commitment -> preparation. Recheck after locks.
+        var v=visit(a,vid,lock);var c=commitment(a,cid,lock);
+        require(vid.equals(CommitmentDomain.object(c.get("source")).get("visitId"))&&a.id.equals(v.get("owner_id"))&&"RECORDED".equals(v.get("status")),409,"SOURCE_CHANGED");
+        return Map.of("commitment",c,"visit",publicVisitV2(v),"binding",PreparationDomain.binding(c,v),"open",PreparationDomain.open(c));
+    }
+    @GetMapping("/v2/commitments/{cid}/preparation") Object preparationGet(@RequestHeader(value="Authorization",required=false)String auth,@PathVariable String cid) {
+        return tx.execute(s->{Actor a=actor(auth);var source=preparationSource(a,cid,false);var response=new LinkedHashMap<String,Object>();response.put("source",source);response.put("preparation",preparation(a,cid,false));return response;});
+    }
+    @GetMapping("/v2/commitments/{cid}/preparation/history") Object preparationHistory(@RequestHeader(value="Authorization",required=false)String auth,@PathVariable String cid) {
+        return tx.execute(s->{Actor a=actor(auth);preparationSource(a,cid,false);var p=preparation(a,cid,false);return p==null?List.of():db.queryForList("SELECT snapshot::text FROM preparation_history WHERE preparation_id=? ORDER BY revision",p.get("id")).stream().map(r->decode((String)r.get("snapshot"))).toList();});
+    }
+    @GetMapping("/v2/preparation-commands/{commandKey}") Object preparationReceipt(@RequestHeader(value="Authorization",required=false)String auth,@PathVariable String commandKey) {
+        key(commandKey);return tx.execute(s->{Actor a=actor(auth);var rows=db.queryForList("SELECT response::text,command_type FROM command_receipts WHERE tenant=? AND actor_id=? AND command_key=?",a.tenant,a.id,commandKey);require(rows.size()==1,404,"NOT_FOUND");String route=(String)rows.getFirst().get("command_type");require(route.startsWith("preparation-"),403,"COMMAND_SCOPE_UNKNOWN");commandRole(a,route);Object result=decode((String)rows.getFirst().get("response"));reauthorizeResult(a,result,route);return result;});
+    }
+    @PostMapping("/v2/commitments/{cid}/preparation") Object preparationCreate(@RequestHeader(value="Authorization",required=false)String auth,@RequestHeader(value="Idempotency-Key",required=false)String key,@PathVariable String cid,@RequestBody Map<String,Object>b){return savePreparation(auth,key,cid,null,b);}
+    @PutMapping("/v2/commitments/{cid}/preparation/{pid}") Object preparationUpdate(@RequestHeader(value="Authorization",required=false)String auth,@RequestHeader(value="Idempotency-Key",required=false)String key,@PathVariable String cid,@PathVariable String pid,@RequestBody Map<String,Object>b){return savePreparation(auth,key,cid,pid,b);}
+    Object savePreparation(String auth,String key,String cid,String pid,Map<String,Object>b){
+        CommitmentDomain.id(cid);if(pid!=null)CommitmentDomain.id(pid);PreparationDomain.body(b,pid==null);
+        return command(auth,key,(pid==null?"preparation-create/":"preparation-update/")+cid+(pid==null?"":"/"+pid),b,a->{
+            var source=preparationSource(a,cid,true);var old=preparation(a,cid,true);
+            require(Boolean.TRUE.equals(source.get("open")),409,"COMMITMENT_COMPLETED");require(source.get("binding").equals(b.get("sourceBinding")),409,"SOURCE_CHANGED");
+            if(pid==null)require(old==null,409,"PREPARATION_EXISTS");else require(old!=null&&pid.equals(old.get("id"))&&old.get("revision").equals(b.get("expectedPreparationRevision")),409,"REVISION_CONFLICT");
+            String id=old==null?UUID.randomUUID().toString():pid;int rev=old==null?1:(int)old.get("revision")+1;String now=java.time.Instant.now().toString();var d=new LinkedHashMap<String,Object>();
+            d.put("schemaVersion",1);d.put("objectType","commitment-preparation");d.put("id",id);d.put("commitmentId",cid);d.put("ownerId",a.id);d.put("revision",rev);d.put("sourceBinding",source.get("binding"));d.put("sourceSnapshot",source);d.put("purposeText",b.get("purposeText"));d.put("purposeOrigin","person-entered");d.put("materialLeads",b.get("materialLeads"));d.put("materialStatus","person-entered-unverified");d.put("changeReason",b.get("changeReason"));d.put("actorId",a.id);d.put("createdAt",old==null?now:old.get("createdAt"));d.put("updatedAt",now);
+            if(old==null)db.update("INSERT INTO preparations(id,tenant,team,owner_id,commitment_id,revision,document) VALUES(?,?,?,?,?,1,?::jsonb)",id,a.tenant,a.team,a.id,cid,encode(d));else db.update("UPDATE preparations SET revision=?,document=?::jsonb,updated_at=now() WHERE id=?",rev,encode(d),id);
+            db.update("INSERT INTO preparation_history(preparation_id,revision,snapshot) VALUES(?,?,?::jsonb)",id,rev,encode(d));event(a,key,id,old==null?"PREPARATION_CREATED":"PREPARATION_REVISED",rev);return d;
+        });
+    }
     @GetMapping("/health") Object health() { db.queryForObject("SELECT 1",Integer.class);return Map.of("status","UP","mode","synthetic","persistence","postgresql","modelIntegration",false); }
     @ExceptionHandler(Problem.class) ResponseEntity<?> domainError(Problem e) {return ResponseEntity.status(e.status).body(Map.of("code",e.code,"message",e.code));}
     @ExceptionHandler(DataAccessException.class) ResponseEntity<?> databaseError(DataAccessException e) {return ResponseEntity.status(503).body(Map.of("code","PERSISTENCE_UNAVAILABLE","message","Save result is not confirmed. Retain input and look up the original command before retrying."));}

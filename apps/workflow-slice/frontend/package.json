@@ -11,7 +11,8 @@
     "test:real": "node --test --test-reporter=tap tests/rep-real-api-dom.test.mjs",
     "test:domain": "node --test --test-reporter=tap tests/domain-v3/*.mjs tests/record-contract.test.mjs tests/event-draft.test.mjs tests/handoff-contract.test.mjs tests/visit-list.test.mjs",
     "test:list": "npm run build && node --test tests/visit-list.test.mjs tests/visit-list-dom.test.mjs",
-    "test:preferences": "npm run build && node --test tests/list-preferences.test.mjs tests/list-preferences-dom.test.mjs"
+    "test:preferences": "npm run build && node --test tests/list-preferences.test.mjs tests/list-preferences-dom.test.mjs",
+    "test:preparation": "npm run build && node --test tests/preparation.test.mjs tests/preparation-dom.test.mjs tests/integration-recovery-dom.test.mjs"
   },
   "dependencies": {
     "vue": "3.5.22"
