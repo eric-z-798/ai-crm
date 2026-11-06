@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import {computed,nextTick,reactive,ref,watch} from 'vue';
 import {defaultCriteria,selectVisits,validCriteria,fallbackAnchor,type ListVisit} from './visit-list';
+import {preferenceKey,readPreferences,savePreferences,type PreferenceStatus} from './list-preferences';
+import {preferenceCopy} from './list-preferences-i18n';
 import {listCopy} from './visit-list-i18n';
 type Row=ListVisit&{occurredOn:string|null;revision:number};
 const props=defineProps<{visits:Row[];lang:'zh'|'en';disabled:boolean;loading:boolean;loadError:boolean;active:boolean;currentId:string|null;scope:string}>();
 const emit=defineEmits<{select:[id:string];refresh:[]}>();
 const text=computed(()=>listCopy[props.lang]),draft=reactive(defaultCriteria()),applied=ref(defaultCriteria());
+const preferenceStatus=ref<PreferenceStatus>(''),preferenceText=computed(()=>preferenceCopy[props.lang]);
+const preferenceDisabled=computed(()=>props.disabled||props.loading||props.loadError||!preferenceKey(props.scope));
+function saveSettings(){if(preferenceDisabled.value||unapplied.value)return;preferenceStatus.value=savePreferences(props.scope,applied.value,()=>localStorage);}
+function restoreSettings(){if(preferenceDisabled.value)return;const result=readPreferences(props.scope,()=>localStorage);preferenceStatus.value=result.status;if(result.criteria){Object.assign(draft,result.criteria);applied.value={...result.criteria};inputError.value=false;resetPosition();}}
 const rows=computed(()=>selectVisits(props.visits,applied.value));
 const unapplied=computed(()=>JSON.stringify(draft)!==JSON.stringify(applied.value));
 const inputError=ref(false),positionChanged=ref(false),scroll=ref<HTMLElement|null>(null);
@@ -40,7 +46,7 @@ watch(()=>props.active,(active,was)=>{if(!active&&was){ // v-show has not hidden
  }else if(active)restore(true);
 },{flush:'pre'});
 watch(()=>props.lang,()=>{capture();restore();},{flush:'pre'});
-watch(()=>props.scope,()=>{opener=null;Object.assign(draft,defaultCriteria());applied.value=defaultCriteria();inputError.value=false;resetPosition();});
+watch(()=>props.scope,()=>{preferenceStatus.value='';opener=null;Object.assign(draft,defaultCriteria());applied.value=defaultCriteria();inputError.value=false;resetPosition();});
 defineExpose({returnToList});
 </script>
 <template>
@@ -52,6 +58,7 @@ defineExpose({returnToList});
    <label for="visit-list-status">{{text.status}}<select id="visit-list-status" v-model="draft.status"><option value="ALL">{{text.all}}</option><option value="DRAFT">{{text.draft}}</option><option value="RECORDED">{{text.recorded}}</option></select></label>
    <div class="button-row"><button id="visit-list-apply" type="submit">{{text.apply}}</button><button id="visit-list-cancel" type="button" @click="cancel">{{text.cancel}}</button><button id="visit-list-reset" type="button" @click="reset">{{text.reset}}</button></div>
   </fieldset><p v-if="inputError" id="visit-list-error" role="alert">{{text.length}}</p><p v-if="unapplied" id="visit-list-unapplied" role="status">{{text.unapplied}}</p></form>
+  <div class="visit-list-preferences"><p class="field-hint">{{preferenceText.local}}</p><div class="button-row"><button id="visit-list-save-settings" :disabled="preferenceDisabled||unapplied" @click="saveSettings">{{preferenceText.save}}</button><button id="visit-list-restore-settings" :disabled="preferenceDisabled" @click="restoreSettings">{{preferenceText.restore}}</button></div><p class="field-hint">{{preferenceText.replaces}}</p><p v-if="unapplied" class="field-hint">{{preferenceText.applyFirst}}</p><p v-if="preferenceStatus" id="visit-list-preference-status" role="status">{{preferenceText[preferenceStatus]}}</p></div>
   <div class="visit-list-summary"><p id="visit-list-applied">{{text.applied}}: {{applied.query.trim()||text.noQuery}} · {{applied.status==='ALL'?text.all:applied.status==='DRAFT'?text.draft:text.recorded}} · {{applied.sort==='newest'?text.newest:text.oldest}}</p><p id="visit-list-count">{{text.count}}: {{rows.length}} / {{visits.length}}</p><p class="field-hint">{{text.session}}</p>
    <p v-if="currentId&&visits.some(v=>v.id===currentId)&&!rows.some(v=>v.id===currentId)" id="visit-list-current-hidden" role="status">{{text.outside}}</p>
    <p v-if="positionChanged" id="visit-list-position-changed" role="status">{{text.changed}}</p>
@@ -65,5 +72,5 @@ defineExpose({returnToList});
  </div>
 </template>
 <style scoped>
-.visit-list-panel{max-height:none;overflow:visible;min-width:0;align-self:start}.visit-list-controls,.visit-list-summary{padding:0 16px 14px;overflow-wrap:anywhere}.visit-list-controls label{margin:0 0 10px}.visit-list-controls select{display:block;width:100%;margin-top:6px;min-height:44px}.visit-list-controls .button-row{gap:6px}.visit-list-controls .button-row button{min-width:0;flex:1;padding:9px 6px}.visit-list-summary p{font-size:12px;line-height:1.6;margin:5px 0}.visit-list-scroll{max-height:65vh;overflow-y:auto;overflow-anchor:none;min-height:60px}.visit-list-scroll:focus{outline:2px solid #3b82f6;outline-offset:2px}.record-item{width:100%;text-align:left}.record-preview{white-space:pre-wrap;overflow-wrap:anywhere}@media(max-width:800px){.visit-list-scroll{max-height:300px}}
+.visit-list-panel{max-height:none;overflow:visible;min-width:0;align-self:start}.visit-list-controls,.visit-list-summary,.visit-list-preferences{padding:0 16px 14px;overflow-wrap:anywhere}.visit-list-controls label{margin:0 0 10px}.visit-list-controls select{display:block;width:100%;margin-top:6px;min-height:44px}.visit-list-controls .button-row{gap:6px}.visit-list-controls .button-row button{min-width:0;flex:1;padding:9px 6px}.visit-list-summary p{font-size:12px;line-height:1.6;margin:5px 0}.visit-list-scroll{max-height:65vh;overflow-y:auto;overflow-anchor:none;min-height:60px}.visit-list-scroll:focus{outline:2px solid #3b82f6;outline-offset:2px}.record-item{width:100%;text-align:left}.record-preview{white-space:pre-wrap;overflow-wrap:anywhere}@media(max-width:800px){.visit-list-scroll{max-height:300px}}
 </style>

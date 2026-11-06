@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {JSDOM} from 'jsdom';
+const built=fs.readFileSync('dist/index.html','utf8').match(/src="([^"]+\.js)"/)[1],code=fs.readFileSync('dist'+built,'utf8');
+const make=(id,status,org,time)=>({id,status,organization:org,notes:'原文 '+id+' Ω',revision:2,occurredOn:null,ownerId:'rep-a',organizationId:null,createdAt:time,updatedAt:time});
+const initial=[make('a','DRAFT','Alpha','2026-11-06T01:00:00.000001Z'),make('b','RECORDED','Beta','2026-11-06T01:00:00.000002Z'),make('c','RECORDED','Gamma','2026-11-06T01:00:00.000002Z')];
+async function boot(){
+ const state={rows:structuredClone(initial),fail:false,invalid:false,calls:[]};const dom=new JSDOM('<div id="app"></div>',{url:'http://localhost:5173',runScripts:'outside-only',pretendToBeVisual:true});const w=dom.window;w.confirm=()=>true;w.AbortController=AbortController;
+ w.fetch=async(url,o={})=>{const p=String(url).replace(/^\/api/,''),method=o.method??'GET';state.calls.push({p,method});assert.equal(method,'GET');const response=(x,status=200)=>({ok:status<400,status,json:async()=>w.JSON.parse(JSON.stringify(x))});const manager=o.headers.Authorization.includes('manager');
+ if(p==='/context')return response({id:manager?'manager-a':'rep-a',tenant:'tenant-a',role:manager?'MANAGER':'REP'});
+ if(p==='/v2/visits'){if(state.fail)return response({code:'FAIL'},503);const rows=manager?state.rows.filter(r=>r.status==='RECORDED'):state.rows;return response(state.invalid?rows.map(r=>({...r,updatedAt:'bad'})):rows);}
+ if(p==='/v2/handoffs'||p==='/v2/commitments')return response([]);
+ if(p.endsWith('/review'))return response({followUpReview:null});if(p.endsWith('/history'))return response({visitId:p.split('/')[3],versions:[]});throw Error(p);
+ };
+ w.eval(code);const tick=()=>new Promise(r=>setTimeout(r,25));await tick();await tick();
+ const q=s=>w.document.querySelector(s),ids=()=>[...w.document.querySelectorAll('.record-item')].map(e=>e.dataset.visitId);
+ const click=async s=>{const e=q(s);assert(e,s);assert(!e.disabled,s);e.click();await tick();};const input=async(s,v)=>{const e=q(s);assert(e,s);e.value=v;e.dispatchEvent(new w.Event(e.tagName==='SELECT'?'change':'input',{bubbles:true}));await tick();};
+ return {w,state,q,ids,click,input,tick,close:()=>w.close()};
+}
+test('explicit preferences preserve draft, defaults, scope and bilingual state',async()=>{const a=await boot();try{await a.click('[data-visit-id="a"]');await a.input('#notes','Business 原文');await a.input('#visit-list-query',' Alpha ');assert(a.q('#visit-list-save-settings').disabled);await a.click('#visit-list-apply');await a.click('#visit-list-save-settings');const saved=a.w.localStorage.getItem('aicrm-list-preferences-v1:'+JSON.stringify(['tenant-a','rep-a','REP']));assert(saved);await a.click('#visit-list-reset');assert.equal(a.q('#visit-list-query').value,'');await a.input('#visit-list-query','temporary');await a.click('#visit-list-restore-settings');assert.equal(a.q('#visit-list-query').value,' Alpha ');assert.equal(a.q('#notes').value,'Business 原文');assert.deepEqual(a.ids(),['a']);await a.click('.language');assert.match(a.q('#visit-list-preference-status').textContent,/Saved list settings applied/);assert.equal(a.w.localStorage.getItem('aicrm-list-preferences-v1:'+JSON.stringify(['tenant-a','rep-a','REP'])),saved);await a.input('#role','manager');const nav=[...a.w.document.querySelectorAll('nav button')];nav[0].click();await a.tick();await a.click('#visit-list-restore-settings');assert.match(a.q('#visit-list-preference-status').textContent,/No list settings/);assert.equal(a.q('#visit-list-query').value,'');assert.equal(a.state.calls.filter(c=>c.method!=='GET').length,0);}finally{a.close();}});
+test('injected storage failure is localized and list errors disable preferences',async()=>{const a=await boot();try{Object.defineProperty(a.w,'localStorage',{get(){throw Error('injected unavailable')}});await a.click('#visit-list-save-settings');assert.match(a.q('#visit-list-preference-status').textContent,/未能保存/);await a.click('#visit-list-restore-settings');assert.match(a.q('#visit-list-preference-status').textContent,/未能读取/);await a.click('.language');assert.match(a.q('#visit-list-preference-status').textContent,/Could not read/);a.state.fail=true;await a.click('#visit-list-refresh');assert(a.q('#visit-list-save-settings').disabled);assert(a.q('#visit-list-restore-settings').disabled);}finally{a.close();}});
