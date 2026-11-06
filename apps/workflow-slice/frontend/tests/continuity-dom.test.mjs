@@ -23,7 +23,7 @@ async function boot(storage=new Map()){
   const response=(data,status=200)=>({ok:status<400,status,json:async()=>w.JSON.parse(JSON.stringify(data))});
   if(path==='/context')return response({id:options.headers.Authorization==='Bearer demo-manager'?'manager-a':'rep-a',role:options.headers.Authorization==='Bearer demo-manager'?'MANAGER':'REP',tenant:'tenant-a'});
   if(path==='/v2/visits')return response(visits);
-  if(path==='/handoffs')return response([]);
+  if(path==='/v2/handoffs')return response([]);
   if(path==='/v2/commitments')return state.listFail?response({code:'UNAVAILABLE'},503):response(state.commitments);
   if(path.endsWith('/review'))return state.reviewFail?response({code:'UNAVAILABLE'},503):response({schemaVersion:2,objectType:'record-review',visitId:path.split('/')[3],followUpReview:path.includes('legacy')?null:{status:'reviewed',decisions:[]}});
   const value=visits.find(v=>v.id===path.split('/')[3]);

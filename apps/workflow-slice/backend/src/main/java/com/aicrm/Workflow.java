@@ -83,7 +83,8 @@ public class Workflow {
     }
     void commandRole(Actor a,String route) {
         String action=route==null?"":route.split("/",2)[0];
-        if(Set.of("create","update","confirm","handoff","record-v2","commitment-event").contains(action))require(a.role.equals("REP"),403,"FORBIDDEN");
+        if(Set.of("create","update","confirm","handoff","record-v2","commitment-event","correct-visit").contains(action))require(a.role.equals("REP"),403,"FORBIDDEN");
+        else if(action.equals("handoff-event"))require(Set.of("REP","MANAGER").contains(a.role),403,"FORBIDDEN");
         else if(Set.of("receive","accept").contains(action))require(a.role.equals("MANAGER"),403,"FORBIDDEN");
         else throw new Problem(403,"COMMAND_SCOPE_UNKNOWN");
     }
@@ -91,10 +92,14 @@ public class Workflow {
         if(!(result instanceof Map<?,?> r))throw new Problem(403,"COMMAND_SCOPE_UNKNOWN");
         String action=route==null?"":route.split("/",2)[0];
         // Legacy receipt bodies remain byte-content compatible. Their saved operation identifies the object.
-        if(Set.of("create","update","confirm").contains(action)) {
+        if(Set.of("create","update","confirm","correct-visit").contains(action)) {
             require(r.get("id") instanceof String,403,"COMMAND_SCOPE_UNKNOWN");visit(a,(String)r.get("id"),false);
         } else if(Set.of("handoff","receive","accept").contains(action)) {
             require(r.get("id") instanceof String,403,"COMMAND_SCOPE_UNKNOWN");handoff(a,(String)r.get("id"),false);
+        } else if(action.equals("handoff-event")) {
+            require("handoff-result-event".equals(r.get("objectType")) && r.get("handoff") instanceof Map<?,?> && r.get("event") instanceof Map<?,?>,403,"COMMAND_SCOPE_UNKNOWN");
+            var savedH=(Map<?,?>)r.get("handoff");var savedE=(Map<?,?>)r.get("event");require(savedH.get("id") instanceof String && savedE.get("type") instanceof String && a.id.equals(savedE.get("actorId")),403,"COMMAND_SCOPE_UNKNOWN");
+            authorizeHandoffResult(a,handoff(a,(String)savedH.get("id"),false),(String)savedE.get("type"));
         } else if(action.equals("record-v2")) {
             require("record-with-commitments".equals(r.get("objectType")) && r.get("visit") instanceof Map<?,?> && r.get("commitments") instanceof List<?>,403,"COMMAND_SCOPE_UNKNOWN");
             var v=(Map<?,?>)r.get("visit");require(v.get("id") instanceof String,403,"COMMAND_SCOPE_UNKNOWN");visit(a,(String)v.get("id"),false);
@@ -105,7 +110,7 @@ public class Workflow {
     }
     Object command(String auth,String key,String route,Map<String,Object> body,Function<Actor,Object> work) {
         key(key);
-        boolean versioned=route.startsWith("record-v2") || route.startsWith("commitment-event/");
+        boolean versioned=route.startsWith("record-v2") || route.startsWith("commitment-event/") || route.startsWith("handoff-event/");
         Object hashBody=versioned?CommitmentDomain.canonical(body):new TreeMap<>(body);
         var envelope=new LinkedHashMap<String,Object>();envelope.put("route",route);envelope.put("body",hashBody);String hash=digest(envelope);
         // Original v1 used Map.of, whose top-level key iteration order can change after a JVM restart.
@@ -205,6 +210,33 @@ public class Workflow {
     @GetMapping("/v2/visits/{id}") Object visitV2(@RequestHeader(value="Authorization",required=false) String auth,@PathVariable String id) {
         return tx.execute(s->publicVisitV2(visit(actor(auth),id,false)));
     }
+    @GetMapping("/v2/visits/{id}/history") Object visitHistoryV2(@RequestHeader(value="Authorization",required=false) String auth,@PathVariable String id) {
+        return tx.execute(s->{
+            var current=visit(actor(auth),id,false);
+            var versions=new TreeMap<Integer,Object>();
+            for(var row:db.queryForList("SELECT revision,snapshot::text FROM visit_history WHERE visit_id=? ORDER BY revision",id))
+                versions.put((Integer)row.get("revision"),decode((String)row.get("snapshot")));
+            // Legacy records may have no snapshots. Expose only known history, including the current row.
+            versions.put((Integer)current.get("revision"),publicVisitV2(current));
+            return Map.of("visitId",id,"versions",new ArrayList<>(versions.values()));
+        });
+    }
+    @PostMapping("/v2/visits/{id}/corrections") Object correctVisitV2(@RequestHeader(value="Authorization",required=false) String auth,@RequestHeader(value="Idempotency-Key",required=false) String key,@PathVariable String id,@RequestBody Map<String,Object> b) {
+        schema(b,"expectedRevision","organization","occurredOn","notes");
+        int expected=revision(b);String org=text(b,"organization",200),notes=text(b,"notes",4000);
+        CommitmentDomain.text(org);CommitmentDomain.text(notes);
+        if(b.get("occurredOn")!=null)CommitmentDomain.day(b.get("occurredOn"));
+        LocalDate day=b.get("occurredOn")==null?null:LocalDate.parse((String)b.get("occurredOn"));
+        return command(auth,key,"correct-visit/"+id,b,a->{
+            var old=visit(a,id,true);require(a.id.equals(old.get("owner_id")),403,"FORBIDDEN");
+            require("RECORDED".equals(old.get("status")),409,"RECORD_NOT_RECORDED");
+            require(old.get("revision").equals(expected),409,"REVISION_CONFLICT");
+            snapshotVisit(old);
+            db.update("UPDATE visits SET organization=?,occurred_on=?,notes=?,revision=revision+1,updated_at=now() WHERE id=?",org,day,notes,id);
+            var corrected=visit(a,id,false);snapshotVisit(corrected);
+            event(a,key,id,"VISIT_CORRECTED",expected+1);return publicVisitV2(corrected);
+        });
+    }
     @GetMapping("/v2/visits/{id}/review") Object reviewV2(@RequestHeader(value="Authorization",required=false) String auth,@PathVariable String id) {
         return tx.execute(s->{
             Actor a=actor(auth);visit(a,id,false);
@@ -265,6 +297,50 @@ public class Workflow {
             return updated;
         });
     }
+    String acceptedBy(Map<String,Object> h) {
+        var audits=db.queryForList("SELECT tenant,object_id,actor_id,command_key,action,revision FROM audit_events WHERE tenant=? AND object_id=? AND action='HANDOFF_ACCEPTED'",h.get("tenant"),h.get("id"));
+        if(audits.size()!=1)return null;var a=audits.getFirst();
+        var receipts=db.queryForList("SELECT tenant,actor_id,command_key,command_type,response::text FROM command_receipts WHERE tenant=? AND actor_id=? AND command_key=?",a.get("tenant"),a.get("actor_id"),a.get("command_key"));
+        var normalized=new ArrayList<Map<String,Object>>();for(var r:receipts){var copy=new LinkedHashMap<>(r);copy.put("response",decode((String)r.get("response")));normalized.add(copy);}
+        return HandoffResults.acceptedBy(h,audits,normalized);
+    }
+    List<Map<String,Object>> handoffResultHistory(Map<String,Object> h) {
+        var history=new ArrayList<Map<String,Object>>();
+        for(var row:db.queryForList("SELECT revision,event_id,document::text FROM handoff_result_events WHERE handoff_id=? ORDER BY revision",h.get("id"))){
+            var e=CommitmentDomain.object(decode((String)row.get("document")));
+            require(Objects.equals(row.get("revision"),e.get("revision"))&&Objects.equals(row.get("event_id"),e.get("eventId"))&&((Integer)row.get("revision"))<=((Integer)h.get("revision")),503,"STORED_HANDOFF_HISTORY_INVALID");history.add(e);
+        }
+        return history;
+    }
+    Map<String,Object> publicHandoffResult(Map<String,Object> h) {
+        var p=publicHandoff(h);p.put("schemaVersion",1);p.put("objectType","internal-handoff");p.put("createdAt",((java.sql.Timestamp)h.get("created_at")).toInstant().toString());
+        String accepted=acceptedBy(h);p.put("acceptedBy",accepted);p.put("acceptanceEvidence",!"ACCEPTED".equals(h.get("status"))?"not-accepted":accepted==null?"unverified":"verified");
+        p.put("result",HandoffResults.project(handoffResultHistory(h)));return p;
+    }
+    void authorizeHandoffResult(Actor a,Map<String,Object> h,String type) {
+        require(HandoffResults.TYPES.contains(type),403,"COMMAND_SCOPE_UNKNOWN");
+        if(type.equals("correction-requested"))require(a.role.equals("REP")&&a.id.equals(h.get("owner_id")),403,"FORBIDDEN");
+        else {require(a.role.equals("MANAGER")&&a.id.equals(h.get("recipient_id")),403,"FORBIDDEN");require(a.id.equals(acceptedBy(h)),409,"ACCEPTANCE_EVIDENCE_UNVERIFIED");}
+    }
+    @GetMapping("/v2/handoffs") Object handoffResults(@RequestHeader(value="Authorization",required=false) String auth) {
+        return tx.execute(s->{Actor a=actor(auth);return db.queryForList("SELECT * FROM handoffs WHERE tenant=? AND team=? AND ((owner_id=? AND ?='REP') OR (recipient_id=? AND ?='MANAGER')) ORDER BY updated_at DESC,id",a.tenant,a.team,a.id,a.role,a.id,a.role).stream().map(this::publicHandoffResult).toList();});
+    }
+    @GetMapping("/v2/handoffs/{id}") Object handoffResult(@RequestHeader(value="Authorization",required=false) String auth,@PathVariable String id) {
+        return tx.execute(s->publicHandoffResult(handoff(actor(auth),id,false)));
+    }
+    @PostMapping("/v2/handoffs/{id}/events") Object handoffResultEvent(@RequestHeader(value="Authorization",required=false) String auth,@RequestHeader(value="Idempotency-Key",required=false) String key,@PathVariable String id,@RequestBody Map<String,Object> b) {
+        schema(b,"expectedRevision","event");int expected=revision(b);var input=CommitmentDomain.object(b.get("event"));HandoffResults.validateInput(input);
+        return command(auth,key,"handoff-event/"+id,b,a->{
+            var h=handoff(a,id,true);authorizeHandoffResult(a,h,HandoffResults.type(input));
+            require("ACCEPTED".equals(h.get("status")),409,"HANDOFF_NOT_ACCEPTED");require(h.get("revision").equals(expected),409,"REVISION_CONFLICT");
+            var event=HandoffResults.append(handoffResultHistory(h),input,a.id,expected+1,UUID.randomUUID().toString(),java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS).toString());
+            db.update("INSERT INTO handoff_result_events(event_id,handoff_id,revision,document) VALUES(?,?,?,?::jsonb)",event.get("eventId"),id,expected+1,encode(event));
+            db.update("UPDATE handoffs SET revision=revision+1,updated_at=now() WHERE id=?",id);
+            event(a,key,id,"HANDOFF_RESULT_"+HandoffResults.type(input).toUpperCase(Locale.ROOT).replace('-','_'),expected+1);
+            return Map.of("schemaVersion",1,"objectType","handoff-result-event","handoff",publicHandoffResult(handoff(a,id,false)),"event",event);
+        });
+    }
+    @ExceptionHandler(HandoffResults.Problem.class) ResponseEntity<?> handoffResultError(HandoffResults.Problem e) {return ResponseEntity.status(e.status).body(Map.of("code",e.code,"message",e.code));}
     @GetMapping("/health") Object health() { db.queryForObject("SELECT 1",Integer.class);return Map.of("status","UP","mode","synthetic","persistence","postgresql","modelIntegration",false); }
     @ExceptionHandler(Problem.class) ResponseEntity<?> domainError(Problem e) {return ResponseEntity.status(e.status).body(Map.of("code",e.code,"message",e.code));}
     @ExceptionHandler(DataAccessException.class) ResponseEntity<?> databaseError(DataAccessException e) {return ResponseEntity.status(503).body(Map.of("code","PERSISTENCE_UNAVAILABLE","message","Save result is not confirmed. Retain input and look up the original command before retrying."));}

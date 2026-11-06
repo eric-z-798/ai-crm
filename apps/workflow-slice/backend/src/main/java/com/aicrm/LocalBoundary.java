@@ -28,6 +28,12 @@ public class LocalBoundary implements Filter {
         if(r.getContentLengthLong()>16384) {out.sendError(413);return;}
         // Bound streamed/chunked bodies too; reject instead of buffering unbounded input.
         if(r.getContentLengthLong()<0 && Set.of("POST","PUT").contains(r.getMethod())) {out.sendError(411);return;}
+        // Contract negotiation is separate from authentication. Unsupported clients fail closed.
+        if(r.getRequestURI().startsWith("/api/") && !r.getRequestURI().equals("/api/health") &&
+           !"record-corrections-handoff-results-1".equals(r.getHeader("X-AICRM-Contract"))) {
+            out.setStatus(426);out.setContentType("application/json");
+            out.getWriter().write("{\"code\":\"CLIENT_UPGRADE_REQUIRED\",\"message\":\"Upgrade this client before continuing. Retain pending request and original input.\"}");return;
+        }
         chain.doFilter(req,res);
     }
 }

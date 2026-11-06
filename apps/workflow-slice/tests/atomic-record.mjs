@@ -10,7 +10,7 @@ const base=process.env.CRM_TEST_API_BASE??'http://127.0.0.1:8787/api';
 const fixture=JSON.parse(await readFile(path.join(process.env.CRM_TEST_RUN,'legacy-fixture.json'),'utf8'));
 const tables=['actors','visits','handoffs','command_receipts','audit_events','outbox','visit_history','follow_up_reviews','commitments'];
 async function snapshot(){const s={};for(const t of tables)s[t]=(await db.query(`SELECT row_to_json(x) row FROM ${t} x ORDER BY row_to_json(x)::text`)).rows.map(r=>r.row);return s;}
-async function api(route,{method='GET',body,key,status=200}={}){const r=await fetch(base+route,{method,headers:{Authorization:'Bearer demo-rep',...(body?{'Content-Type':'application/json'}:{}),...(key?{'Idempotency-Key':key}:{})},...(body?{body:JSON.stringify(body)}:{})});const out=await r.json();assert.equal(r.status,status,`${method} ${route}: ${JSON.stringify(out)}`);return out;}
+async function api(route,{method='GET',body,key,status=200}={}){const r=await fetch(base+route,{method,headers:{'X-AICRM-Contract':'record-corrections-handoff-results-1',Authorization:'Bearer demo-rep',...(body?{'Content-Type':'application/json'}:{}),...(key?{'Idempotency-Key':key}:{})},...(body?{body:JSON.stringify(body)}:{})});const out=await r.json();assert.equal(r.status,status,`${method} ${route}: ${JSON.stringify(out)}`);return out;}
 const declaration=(text,deadline={kind:'unknown'})=>({kind:'explicit-self-commitment',confirmation:'person-explicitly-confirmed',commitmentText:text,deadline});
 const record=(decisions=[],changes={})=>({schemaVersion:2,visitId:null,expectedRevision:null,record:{organization:'  合成机构 Ω  ',organizationId:null,occurredOn:null,notes:'原话保留\r\n中文 English 🧪  '},followUpReview:{status:'reviewed',decisions},...changes});
 const save=(body,key,status=200)=>api('/v2/visits/record',{method:'POST',body,key,status});
@@ -74,7 +74,7 @@ await t.test('progress, explicit actual replies and explicit completion are inde
 await t.test('client discards event response then recovers exact original result through supplied command key',async()=>{
  const event={type:'reply-recorded',eventId:'discarded-response-event',direction:'from-customer',occurredAt:'2026-10-02T10:00:00Z',text:'回复存盘但界面未得到结果'};
  const body={schemaVersion:2,expectedRevision:current.events.length,event};
- const response=await fetch(base+`/v2/commitments/${current.id}/events`,{method:'POST',headers:{Authorization:'Bearer demo-rep','Content-Type':'application/json','Idempotency-Key':'event-lost-response-key'},body:JSON.stringify(body)});
+ const response=await fetch(base+`/v2/commitments/${current.id}/events`,{method:'POST',headers:{'X-AICRM-Contract':'record-corrections-handoff-results-1',Authorization:'Bearer demo-rep','Content-Type':'application/json','Idempotency-Key':'event-lost-response-key'},body:JSON.stringify(body)});
  assert.equal(response.status,200);await response.body.cancel();
  const recovered=await api('/commands/event-lost-response-key');assert.equal(recovered.events.at(-1).eventId,event.eventId);assert.equal(recovered.events.length,current.events.length+1);current=recovered;
  const before=await snapshot();assert.deepEqual(await api(`/v2/commitments/${current.id}/events`,{method:'POST',key:'event-lost-response-key',body}),recovered);assert.deepEqual(await snapshot(),before);

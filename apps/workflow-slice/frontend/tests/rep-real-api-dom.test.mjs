@@ -7,7 +7,7 @@ const host=(process.env.CRM_TEST_API_BASE??'http://127.0.0.1:8787/api').replace(
 const built=fs.readFileSync('dist/index.html','utf8').match(/src="([^"]+\.js)"/)[1];
 const code=fs.readFileSync('dist'+built,'utf8');
 const sleep=()=>new Promise(r=>setTimeout(r,30));
-async function actual(path){const r=await fetch(host+'/api'+path,{headers:{Authorization:'Bearer demo-rep'}});assert.equal(r.status,200);return await r.json()}
+async function actual(path){const r=await fetch(host+'/api'+path,{headers:{'X-AICRM-Contract':'record-corrections-handoff-results-1',Authorization:'Bearer demo-rep'}});assert.equal(r.status,200);return await r.json()}
 await test('built Vue with actual Spring/PostgreSQL API in same runner (JSDOM, no browser visual claim)',async t=>{
  const dom=new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>',{url:'http://localhost:5173',runScripts:'outside-only',pretendToBeVisual:true});const w=dom.window;t.after(()=>w.close());w.AbortController=AbortController;w.confirm=()=>true;
  const calls=[],achieved=[];let dropNext=false;

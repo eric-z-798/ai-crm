@@ -10,7 +10,7 @@ const built=fs.readFileSync(new URL('dist/index.html',root),'utf8').match(/src="
 const code=fs.readFileSync(new URL('dist'+built,root),'utf8');
 const host=process.env.CRM_TEST_API_BASE??'http://127.0.0.1:8787/api',v2='aicrm-synthetic-slice-v2',v1='aicrm-synthetic-slice-v1';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));let seq=0;
-async function api(path,{method='GET',body,key}={}){const r=await fetch(host+path,{method,headers:{Authorization:'Bearer demo-rep',...(body?{'Content-Type':'application/json'}:{}),...(key?{'Idempotency-Key':key}:{})},...(body?{body:JSON.stringify(body)}:{})});const value=await r.json();assert.equal(r.status,200,JSON.stringify(value));return value}
+async function api(path,{method='GET',body,key}={}){const r=await fetch(host+path,{method,headers:{'X-AICRM-Contract':'record-corrections-handoff-results-1',Authorization:'Bearer demo-rep',...(body?{'Content-Type':'application/json'}:{}),...(key?{'Idempotency-Key':key}:{})},...(body?{body:JSON.stringify(body)}:{})});const value=await r.json();assert.equal(r.status,200,JSON.stringify(value));return value}
 const key=()=>`independent-qa-${++seq}`;
 async function create(label){return await api('/v2/visits/record',{method:'POST',key:key(),body:{schemaVersion:2,visitId:null,expectedRevision:null,record:{organization:'QA synthetic institution',organizationId:null,occurredOn:'2026-10-17',notes:'Original communication '+label},followUpReview:{status:'reviewed',decisions:[{kind:'explicit-self-commitment',confirmation:'person-explicitly-confirmed',commitmentText:label,deadline:{kind:'unknown'}}]}}})}
 async function boot({storage=new Map(),failWrites=false,dropPost=false}={}){

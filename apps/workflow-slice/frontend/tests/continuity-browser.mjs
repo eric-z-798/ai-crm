@@ -9,7 +9,7 @@ const apiBase=process.env.CRM_TEST_API_BASE??'http://127.0.0.1:8787/api';
 const apiHost=new URL(apiBase);
 const evidence=process.env.CRM_TEST_RUN??'.';
 const records=[],browserErrors=[];
-async function api(route,body){const r=await fetch(apiBase+route,{method:body?'POST':'GET',headers:{Authorization:'Bearer demo-rep','Content-Type':'application/json',...(body?{'Idempotency-Key':crypto.randomUUID()}: {})},...(body?{body:JSON.stringify(body)}:{})});assert.equal(r.status,200,await r.clone().text());return await r.json();}
+async function api(route,body){const r=await fetch(apiBase+route,{method:body?'POST':'GET',headers:{'X-AICRM-Contract':'record-corrections-handoff-results-1',Authorization:'Bearer demo-rep','Content-Type':'application/json',...(body?{'Idempotency-Key':crypto.randomUUID()}: {})},...(body?{body:JSON.stringify(body)}:{})});assert.equal(r.status,200,await r.clone().text());return await r.json();}
 const app=http.createServer(async(req,res)=>{
  if(req.url.startsWith('/api/')){const proxy=http.request({host:apiHost.hostname,port:apiHost.port,path:req.url,method:req.method,headers:req.headers},incoming=>{res.writeHead(incoming.statusCode,incoming.headers);incoming.pipe(res)});proxy.on('error',()=>{res.writeHead(502);res.end('local API unavailable')});req.pipe(proxy);return;}
  try{const file=req.url==='/'?'index.html':decodeURIComponent(req.url.split('?')[0]).replace(/^\//,'');if(file.includes('..')){res.writeHead(404);res.end();return;}const bytes=await fs.readFile(path.join('dist',file));res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});res.end(bytes);}catch{res.writeHead(404);res.end();}

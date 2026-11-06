@@ -59,3 +59,10 @@ CREATE TABLE IF NOT EXISTS commitments (
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS commitments_scope ON commitments(tenant,team,owner_id);
+
+-- Additive internal result history. Reception states and historical receipts are not rewritten.
+CREATE TABLE IF NOT EXISTS handoff_result_events (
+ event_id text PRIMARY KEY, handoff_id text NOT NULL REFERENCES handoffs(id),
+ revision integer NOT NULL CHECK(revision>0), document jsonb NOT NULL,
+ recorded_at timestamptz NOT NULL DEFAULT now(), UNIQUE(handoff_id,revision)
+);

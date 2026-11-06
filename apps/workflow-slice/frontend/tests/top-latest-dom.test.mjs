@@ -24,7 +24,7 @@ async function boot(storage=new Map()){
   if(method==='POST')return response({code:'REVISION_CONFLICT'},409);
   if(path==='/context')return response({id:options.headers.Authorization==='Bearer demo-manager'?'manager-a':'rep-a',role:options.headers.Authorization==='Bearer demo-manager'?'MANAGER':'REP',tenant:'tenant-a'});
   if(path==='/v2/visits')return response(state.visits);
-  if(path==='/handoffs')return response([]);
+  if(path==='/v2/handoffs')return response([]);
   if(path==='/v2/commitments'){if(state.latestMode==='delay')return new Promise(resolve=>state.delayed.push(()=>resolve(response(state.commitments))));if(state.latestMode==='missing')return response([]);return response(state.commitments);}
   if(path.endsWith('/review'))return state.reviewFail?response({code:'UNAVAILABLE'},503):response({schemaVersion:2,objectType:'record-review',visitId:path.split('/')[3],followUpReview:path.includes('legacy')?null:{status:'reviewed',decisions:[{kind:'explicit-self-commitment',commitmentText:state.commitments[0].events[0].commitmentText,deadline:state.commitments[0].events[0].deadline}]}});
   const value=visits.find(v=>v.id===path.split('/')[3]);
