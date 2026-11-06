@@ -1,0 +1,20 @@
+[
+  {
+    "materialId": "synthetic-reading",
+    "versionId": "v1",
+    "title": "合成阅读流程 / Synthetic reading workflow",
+    "sourceType": "synthetic",
+    "buildSource": "p13-catalog-1",
+    "plainText": "合成验证资料 · Synthetic verification material\n\n版本一：准备阅读流程。\n  保留前导空格与换行。\n本文仅用于验证阅读与返回，不提供医疗建议，不代表官方资料或批准。\nLiteral text: <b>not HTML</b> & \"quoted\".\n",
+    "sha256": "4e57fd4fd837c5e0d3467f6ed658db7fd85b4af1a543e964f4439428a8ef6692"
+  },
+  {
+    "materialId": "synthetic-reading",
+    "versionId": "v2",
+    "title": "合成阅读流程 / Synthetic reading workflow",
+    "sourceType": "synthetic",
+    "buildSource": "p13-catalog-1",
+    "plainText": "合成验证资料 · Synthetic verification material\n\n版本二：准备阅读流程。\n  此版增加：关闭阅读后返回原工作，不表示已展示或发送。\n本文仅用于验证阅读与返回，不提供医疗建议，不代表官方资料或批准。\nLiteral text: <b>not HTML</b> & \"quoted\".\n",
+    "sha256": "3a9a277b80690d0c4a574bba0e4d076a686bf0dc9489a1d6e0e39b0e330e8d4e"
+  }
+]

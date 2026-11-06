@@ -26,8 +26,8 @@ const visitList=ref<InstanceType<typeof VisitList>|null>(null),lc=computed(()=>l
 function openListedVisit(id:string){const item=visits.value.find(v=>v.id===id);if(item)open(item);}
 const correcting=ref(false),correctionReviewed=ref(false),cc=computed(()=>correctionCopy[lang.value]);
 const handoffDraft=reactive(emptyHandoffDraft()),upgradeRequired=ref(false),ht=computed(()=>handoffCopy[lang.value]);
-const preparation=ref<InstanceType<typeof PreparationPanel>|null>(null),preparationState=ref({busy:false,pending:false,dirty:false});
-const preparationBlocking=computed(()=>preparationState.value.busy||preparationState.value.pending),pt=computed(()=>preparationCopy[lang.value]);
+const preparation=ref<InstanceType<typeof PreparationPanel>|null>(null),preparationState=ref({busy:false,pending:false,dirty:false,reading:false});
+const preparationBlocking=computed(()=>preparationState.value.busy||preparationState.value.pending||preparationState.value.reading),pt=computed(()=>preparationCopy[lang.value]);
 function openPreparation(id:string){if(!accessAllowed.value||busy.value||pending.value||loading.value||listError.value||upgradeRequired.value)return;void preparation.value?.open(id);}
 const accessAllowed=ref(false); let accessEpoch=0;
 const storageKey='aicrm-synthetic-slice-v2',legacyStorageKey='aicrm-synthetic-slice-v1';
@@ -390,7 +390,7 @@ onBeforeUnmount(()=>{alive=false;handoffReadSequence++;closeHandoffBackground();
  <div v-if="upgradeRequired" class="alert error" role="alert">{{t.upgradeRequired}} <button type="button" :disabled="preparationBlocking||busy||loading" @click="load">{{t.refresh}}</button></div>
  <div v-if="listError" class="alert error" role="alert">{{t.listError}} <button @click="load" :disabled="loading">{{t.refresh}}</button></div>
  <div v-if="noticeText" class="alert success" role="status">{{noticeText}}</div>
- <PreparationPanel ref="preparation" :lang="lang" :scope="JSON.stringify([context?.tenant,context?.id,context?.role])" :allowed="accessAllowed&&role==='rep'" :external-busy="busy||loading||listError" :external-pending="!!pending" :event-dirty="eventDirty" :upgrade="upgradeRequired" :commitments="commitmentViews" :epoch="accessEpoch" @state="preparationState=$event" @denied="revokeAccess"/>
+ <PreparationPanel ref="preparation" :lang="lang" :scope="JSON.stringify([context?.tenant,context?.id,context?.role])" :allowed="accessAllowed&&role==='rep'" :external-busy="busy||loading||listError" :external-pending="!!pending" :event-dirty="eventDirty" :upgrade="upgradeRequired" :commitments="commitmentViews" :epoch="accessEpoch" @state="preparationState=$event" @denied="revokeAccess" @language="changeLanguage"/>
  <div v-if="errorText" class="alert error" role="alert">{{errorText}}<button v-if="(error?.recoveryTarget||current)&&!pending" @click="showLatest" :disabled="preparationBlocking||busy">{{t.loadLatest}}</button></div>
  <div v-if="pending" class="alert warning" role="status"><strong>{{t.pending}}</strong><p role="status">{{upgradeRequired?t.upgradeRequired:checkingReceipt?t.checking:busy?t.busy:receiptLookupScheduled?t.autoChecking:t.lookupIdle}}</p><div class="button-row"><button :disabled="preparationState.busy||busy" @click="checkResult()">{{t.check}}</button><button :disabled="preparationState.busy||busy" @click="checkResult(true)">{{t.retry}}</button></div></div>
  <div v-if="loading" class="loading" role="status">{{t.loading}}</div>

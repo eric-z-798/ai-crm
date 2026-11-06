@@ -359,6 +359,17 @@ public class Workflow {
     @GetMapping("/v2/commitments/{cid}/preparation") Object preparationGet(@RequestHeader(value="Authorization",required=false)String auth,@PathVariable String cid) {
         return tx.execute(s->{Actor a=actor(auth);var source=preparationSource(a,cid,false);var response=new LinkedHashMap<String,Object>();response.put("source",source);response.put("preparation",preparation(a,cid,false));return response;});
     }
+    Map<String,Object> materialContext(Actor a,String cid,String pid){
+        CommitmentDomain.id(cid);CommitmentDomain.id(pid);preparationSource(a,cid,false);
+        var p=preparation(a,cid,false);require(p!=null&&pid.equals(p.get("id")),404,"NOT_FOUND");
+        return Map.of("cid",cid,"pid",pid,"preparationRevision",p.get("revision"));
+    }
+    @GetMapping("/v2/commitments/{cid}/preparation/{pid}/materials") Object materials(@RequestHeader(value="Authorization",required=false)String auth,@PathVariable String cid,@PathVariable String pid){
+        return tx.execute(s->{var context=materialContext(actor(auth),cid,pid);return Map.of("schemaVersion",1,"context",context,"entries",SyntheticMaterials.entries());});
+    }
+    @GetMapping("/v2/commitments/{cid}/preparation/{pid}/materials/{materialId}/versions/{versionId}") Object materialVersion(@RequestHeader(value="Authorization",required=false)String auth,@PathVariable String cid,@PathVariable String pid,@PathVariable String materialId,@PathVariable String versionId){
+        return tx.execute(s->{var context=materialContext(actor(auth),cid,pid);return Map.of("schemaVersion",1,"context",context,"material",SyntheticMaterials.version(materialId,versionId));});
+    }
     @GetMapping("/v2/commitments/{cid}/preparation/history") Object preparationHistory(@RequestHeader(value="Authorization",required=false)String auth,@PathVariable String cid) {
         return tx.execute(s->{Actor a=actor(auth);preparationSource(a,cid,false);var p=preparation(a,cid,false);return p==null?List.of():db.queryForList("SELECT snapshot::text FROM preparation_history WHERE preparation_id=? ORDER BY revision",p.get("id")).stream().map(r->decode((String)r.get("snapshot"))).toList();});
     }

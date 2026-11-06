@@ -25,7 +25,7 @@ public class LocalBoundary implements Filter {
         if(!hosts.contains(host==null?"":host) || (origin!=null && !Set.of("http://127.0.0.1:8787","http://localhost:8787","http://127.0.0.1:5173","http://localhost:5173").contains(origin))) {
             out.setStatus(403);out.setContentType("application/json");out.getWriter().write("{\"code\":\"LOCAL_ORIGIN_REQUIRED\",\"message\":\"Local demo only\"}");return;
         }
-        String path=r.getRequestURI();boolean preparation=path.matches("/api/v2/commitments/[^/]+/preparation(?:/[^/]+)?")||path.matches("/api/v2/preparation-commands/[^/]+");
+        String path=r.getRequestURI();boolean preparation=path.matches("/api/v2/commitments/[^/]+/preparation(?:/[^/]+)?")||path.matches("/api/v2/commitments/[^/]+/preparation/[^/]+/materials(?:/[^/]+/versions/[^/]+)?")||path.matches("/api/v2/preparation-commands/[^/]+");
         if(preparation&&!"preparation-1".equals(r.getHeader("X-AICRM-Preparation-Contract"))){out.setStatus(426);out.setContentType("application/json");out.getWriter().write("{\"code\":\"CLIENT_UPGRADE_REQUIRED\"}");return;}
         if(r.getContentLengthLong()>(preparation?65536:16384)) {out.sendError(413);return;}
         // Bound streamed/chunked bodies too; reject instead of buffering unbounded input.
